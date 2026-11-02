@@ -1,0 +1,8 @@
+<resources>
+    <string name="app_name">StreamWire</string>
+    <string name="app_tagline">V 1.0.2 WIREFRAME ONLY</string>
+    <string name="nav_home">Trang chủ</string>
+    <string name="nav_history">Lịch sử</string>
+    <string name="nav_admin">Quản trị</string>
+    <string name="nav_settings">Cài đặt</string>
+</resources>

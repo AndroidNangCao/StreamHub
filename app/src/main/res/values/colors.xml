@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Base Brand Colors -->
+    <color name="primary">#0F172A</color>
+    <color name="primary_variant">#1E293B</color>
+    <color name="secondary">#2563EB</color>
+    <color name="secondary_variant">#1D4ED8</color>
+
+    <!-- Background & Surface (Light Mode) -->
+    <color name="background">#F8FAFC</color>
+    <color name="surface">#FFFFFF</color>
+    <color name="card_background">#FFFFFF</color>
+    <color name="divider">#E2E8F0</color>
+
+    <!-- Text Colors -->
+    <color name="text_primary">#0F172A</color>
+    <color name="text_secondary">#64748B</color>
+    <color name="text_hint">#94A3B8</color>
+    <color name="text_on_primary">#FFFFFF</color>
+
+    <!-- State & Accents -->
+    <color name="accent_red">#EF4444</color>
+    <color name="accent_green">#10B981</color>
+    <color name="accent_yellow">#F59E0B</color>
+    <color name="accent_blue">#3B82F6</color>
+
+    <!-- Chip & Badge -->
+    <color name="badge_bg">#F1F5F9</color>
+    <color name="badge_text">#334155</color>
+    <color name="badge_warning_bg">#18181B</color>
+    <color name="badge_warning_text">#FFFFFF</color>
+    <color name="chip_bg_unselected">#F1F5F9</color>
+    <color name="chip_text_unselected">#475569</color>
+    <color name="chip_bg_selected">#0F172A</color>
+    <color name="chip_text_selected">#FFFFFF</color>
+
+    <!-- Overlay & Controls -->
+    <color name="player_overlay">#99000000</color>
+    <color name="player_progress_buffered">#55FFFFFF</color>
+</resources>

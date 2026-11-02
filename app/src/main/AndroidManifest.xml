@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Permissions -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+
+    <application
+        android:allowBackup="true"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
+        android:icon="@drawable/ic_streamwire_logo"
+        android:label="@string/app_name"
+        android:roundIcon="@drawable/ic_streamwire_logo"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.StreamWire"
+        android:usesCleartextTraffic="true"
+        tools:targetApi="31">
+
+        <!-- Màn hình 1: Login Activity (Khởi chạy đầu tiên) -->
+        <activity
+            android:name="com.nhom02.streamwire.ui.auth.LoginActivity"
+            android:exported="true"
+            android:screenOrientation="portrait"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- Màn hình Khung chính: MainActivity -->
+        <activity
+            android:name="com.nhom02.streamwire.ui.main.MainActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:windowSoftInputMode="adjustPan" />
+
+        <!-- Màn hình 3: Chi tiết Video -->
+        <activity
+            android:name="com.nhom02.streamwire.ui.detail.VideoDetailActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
+
+        <!-- Màn hình 4: Trình phát Video (ExoPlayer - Hỗ trợ xoay ngang Fullscreen) -->
+        <activity
+            android:name="com.nhom02.streamwire.ui.player.VideoPlayerActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
+            android:exported="false"
+            android:theme="@style/Theme.StreamWire" />
+
+    </application>
+
+</manifest>
