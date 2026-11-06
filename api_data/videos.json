@@ -1,0 +1,182 @@
+[
+  {
+    "id": "hero_01",
+    "title": "Siêu Phẩm Hành Động 2026: Chiến Binh Không Gian",
+    "description": "Biệt đội tinh nhuệ dấn thân vào vùng cấm địa ngoài không gian để giải cứu con tin và ngăn chặn thảm họa diệt vong toàn cầu.",
+    "videoUrl": "https://media.w3.org/2010/05/sintel/trailer.mp4",
+    "thumbnailUrl": "https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=800&q=80",
+    "duration": "125 phút",
+    "durationMs": 7500000,
+    "views": "1.2M lượt xem",
+    "rating": 9.8,
+    "releaseYear": 2026,
+    "ageRating": "16+",
+    "quality": "4K HDR",
+    "category": "Hành Động",
+    "status": "ACTIVE",
+    "publishedAt": "Hôm nay",
+    "episodes": [
+      {
+        "id": "ep1",
+        "episodeNumber": 1,
+        "title": "Tập 1: Điểm Khởi Đầu",
+        "duration": "45:00",
+        "thumbnailUrl": "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=400&q=80",
+        "videoUrl": "https://media.w3.org/2010/05/sintel/trailer.mp4",
+        "description": "Khám phá trạm không gian Titan và tín hiệu cầu cứu bí ẩn.",
+        "isPlaying": true
+      },
+      {
+        "id": "ep2",
+        "episodeNumber": 2,
+        "title": "Tập 2: Bí Ẩn Vùng Tối Titan",
+        "duration": "42:15",
+        "thumbnailUrl": "https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=400&q=80",
+        "videoUrl": "https://media.w3.org/2010/05/bunny/trailer.mp4",
+        "description": "Sự xuất hiện 90% quái nhân phân chia vũ trụ.",
+        "isPlaying": false
+      },
+      {
+        "id": "ep3",
+        "episodeNumber": 3,
+        "title": "Tập 3: Thực Thể Trong Bóng Tối",
+        "duration": "48:10",
+        "thumbnailUrl": "https://images.unsplash.com/photo-1511447333015-45b65e60f6d5?w=400&q=80",
+        "videoUrl": "https://media.w3.org/2010/05/video/movie_300.mp4",
+        "description": "Cuộc chạm trán bất ngờ đe dọa sinh mạng cả đoàn.",
+        "isPlaying": false
+      },
+      {
+        "id": "ep4",
+        "episodeNumber": 4,
+        "title": "Tập 4: Thời Khắc Quyết Định",
+        "duration": "50:00",
+        "thumbnailUrl": "https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=400&q=80",
+        "videoUrl": "https://raw.githubusercontent.com/intel-iot-devkit/sample-videos/master/person-bicycle-car-detection.mp4",
+        "description": "Kích hoạt cỗ máy dịch chuyển và trở về Trái Đất an toàn.",
+        "isPlaying": false
+      }
+    ],
+    "castList": [
+      {
+        "id": "c1",
+        "name": "Tuấn Anh",
+        "role": "Jax (Đội trưởng)",
+        "avatarUrl": "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&q=80"
+      },
+      {
+        "id": "c2",
+        "name": "Minh Huy",
+        "role": "Alex (Kỹ sư)",
+        "avatarUrl": "https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?w=200&q=80"
+      },
+      {
+        "id": "c3",
+        "name": "Lan Anh",
+        "role": "Tiến sĩ Kira",
+        "avatarUrl": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=200&q=80"
+      },
+      {
+        "id": "c4",
+        "name": "Quốc Bảo",
+        "role": "Đạo diễn",
+        "avatarUrl": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&q=80"
+      }
+    ]
+  },
+  {
+    "id": "v_trend_01",
+    "title": "Tập 1: Hành Trình Bắt Đầu",
+    "description": "Khám phá các bí ẩn vùng đất cổ xưa và khởi đầu cuộc chiến giữa các vì sao.",
+    "videoUrl": "https://media.w3.org/2010/05/bunny/trailer.mp4",
+    "thumbnailUrl": "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=600&q=80",
+    "duration": "45:20",
+    "durationMs": 2720000,
+    "views": "120K lượt xem",
+    "rating": 9.6,
+    "releaseYear": 2025,
+    "ageRating": "13+",
+    "quality": "Full HD",
+    "category": "Hành Động",
+    "status": "ACTIVE",
+    "publishedAt": "2 ngày trước",
+    "episodes": [],
+    "castList": []
+  },
+  {
+    "id": "v_trend_02",
+    "title": "Review Phim Hài Chiếu Rạp Tuần Này",
+    "description": "Tổng hợp các pha hài hước cười ra nước mắt của các bom tấn màn ảnh rộng tháng này.",
+    "videoUrl": "https://media.w3.org/2010/05/video/movie_300.mp4",
+    "thumbnailUrl": "https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=600&q=80",
+    "duration": "32:10",
+    "durationMs": 1930000,
+    "views": "85K lượt xem",
+    "rating": 8.9,
+    "releaseYear": 2025,
+    "ageRating": "13+",
+    "quality": "1080p",
+    "category": "Hài Kịch",
+    "status": "ACTIVE",
+    "publishedAt": "3 ngày trước",
+    "episodes": [],
+    "castList": []
+  },
+  {
+    "id": "v_rec_01",
+    "title": "Bí Ẩn Rừng Đen: Ký Sự",
+    "description": "Theo dấu các sinh vật huyền bí trong rừng nguyên sinh Amazon kỳ bí.",
+    "videoUrl": "https://media.w3.org/2010/05/sintel/trailer.mp4",
+    "thumbnailUrl": "https://images.unsplash.com/photo-1511447333015-45b65e60f6d5?w=400&q=80",
+    "duration": "40:00",
+    "durationMs": 2400000,
+    "views": "45K lượt xem",
+    "rating": 9.1,
+    "releaseYear": 2024,
+    "ageRating": "16+",
+    "quality": "1080p",
+    "category": "Tài Liệu",
+    "status": "ACTIVE",
+    "publishedAt": "5 ngày trước",
+    "episodes": [],
+    "castList": []
+  },
+  {
+    "id": "v_rec_02",
+    "title": "Khám Phá Vũ Trụ & Đa Chiều",
+    "description": "Vũ trụ có bao nhiêu chiều không gian và hố đen đang che giấu điều gì?",
+    "videoUrl": "https://media.w3.org/2010/05/bunny/trailer.mp4",
+    "thumbnailUrl": "https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=400&q=80",
+    "duration": "45:00",
+    "durationMs": 2700000,
+    "views": "78K lượt xem",
+    "rating": 9.4,
+    "releaseYear": 2025,
+    "ageRating": "Tất cả",
+    "quality": "4K HDR",
+    "category": "Viễn Tưởng",
+    "status": "ACTIVE",
+    "publishedAt": "1 tuần trước",
+    "episodes": [],
+    "castList": []
+  },
+  {
+    "id": "v_rec_03",
+    "title": "Bảo Vệ Hành Tinh: Kỷ Nguyên Số",
+    "description": "Các công nghệ trí tuệ nhân tạo và năng lượng tái tạo đang thay đổi thế giới như thế nào.",
+    "videoUrl": "https://raw.githubusercontent.com/intel-iot-devkit/sample-videos/master/person-bicycle-car-detection.mp4",
+    "thumbnailUrl": "https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=400&q=80",
+    "duration": "28:40",
+    "durationMs": 1720000,
+    "views": "92K lượt xem",
+    "rating": 9.5,
+    "releaseYear": 2025,
+    "ageRating": "Tất cả",
+    "quality": "Full HD",
+    "category": "Tài Liệu",
+    "status": "ACTIVE",
+    "publishedAt": "4 ngày trước",
+    "episodes": [],
+    "castList": []
+  }
+]
