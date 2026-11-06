@@ -67,16 +67,19 @@ public interface ApiService {
     Call<AuthResponse> register(@Body RegisterRequest request);
 
     // --- Video Catalog ---
-    @GET("api/categories")
+    @GET("categories.json")
     Call<List<Category>> getCategories();
 
-    @GET("api/videos")
+    @GET("videos.json")
+    Call<List<Video>> getVideos();
+
+    @GET("videos.json")
     Call<List<Video>> getVideos(@Query("categoryId") String categoryId, @Query("query") String query);
 
-    @GET("api/videos/trending")
+    @GET("videos.json")
     Call<List<Video>> getTrendingVideos();
 
-    @GET("api/videos/recommended")
+    @GET("videos.json")
     Call<List<Video>> getRecommendedVideos();
 
     @GET("api/videos/{id}")

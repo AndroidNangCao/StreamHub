@@ -311,6 +311,70 @@ public class DatabaseManager {
         return result != -1;
     }
 
+    public void syncFromApi(List<Category> categories, List<Video> videos) {
+        SQLiteDatabase db = dbHelper.getWritableDatabase();
+        db.beginTransaction();
+        try {
+            if (categories != null && !categories.isEmpty()) {
+                db.delete(DatabaseHelper.TABLE_CATEGORIES, null, null);
+                for (Category c : categories) {
+                    ContentValues cv = new ContentValues();
+                    cv.put(DatabaseHelper.COL_CAT_ID, c.getId());
+                    cv.put(DatabaseHelper.COL_CAT_NAME, c.getName());
+                    db.insertWithOnConflict(DatabaseHelper.TABLE_CATEGORIES, null, cv, SQLiteDatabase.CONFLICT_REPLACE);
+                }
+            }
+
+            if (videos != null && !videos.isEmpty()) {
+                for (Video v : videos) {
+                    ContentValues cv = new ContentValues();
+                    cv.put(DatabaseHelper.COL_VIDEO_ID, v.getId());
+                    cv.put(DatabaseHelper.COL_VIDEO_TITLE, v.getTitle());
+                    cv.put(DatabaseHelper.COL_VIDEO_DESC, v.getDescription());
+                    cv.put(DatabaseHelper.COL_VIDEO_URL, v.getVideoUrl());
+                    cv.put(DatabaseHelper.COL_VIDEO_THUMB, v.getThumbnailUrl());
+                    cv.put(DatabaseHelper.COL_VIDEO_DURATION, v.getDuration());
+                    cv.put(DatabaseHelper.COL_VIDEO_DURATION_MS, v.getDurationMs());
+                    cv.put(DatabaseHelper.COL_VIDEO_VIEWS, v.getViews());
+                    cv.put(DatabaseHelper.COL_VIDEO_RATING, v.getRating());
+                    cv.put(DatabaseHelper.COL_VIDEO_YEAR, v.getReleaseYear());
+                    cv.put(DatabaseHelper.COL_VIDEO_AGE, v.getAgeRating());
+                    cv.put(DatabaseHelper.COL_VIDEO_QUALITY, v.getQuality());
+                    cv.put(DatabaseHelper.COL_VIDEO_CATEGORY, v.getCategory());
+                    cv.put(DatabaseHelper.COL_VIDEO_STATUS, v.getStatus() != null ? v.getStatus() : "ACTIVE");
+                    cv.put(DatabaseHelper.COL_VIDEO_PUBLISHED, v.getPublishedAt());
+                    db.insertWithOnConflict(DatabaseHelper.TABLE_VIDEOS, null, cv, SQLiteDatabase.CONFLICT_REPLACE);
+
+                    if (v.getEpisodes() != null && !v.getEpisodes().isEmpty()) {
+                        for (Episode ep : v.getEpisodes()) {
+                            insertEpisode(ep, v.getId());
+                        }
+                    } else {
+                        Episode ep = new Episode("ep_" + v.getId() + "_1", 1, "Tập 1: Mở đầu",
+                                v.getDuration() != null ? v.getDuration() : "45:00",
+                                v.getThumbnailUrl(), v.getVideoUrl(), v.getDescription());
+                        insertEpisode(ep, v.getId());
+                    }
+
+                    if (v.getCastList() != null && !v.getCastList().isEmpty()) {
+                        for (CastMember cm : v.getCastList()) {
+                            ContentValues castCv = new ContentValues();
+                            castCv.put(DatabaseHelper.COL_CAST_ID, cm.getId());
+                            castCv.put(DatabaseHelper.COL_CAST_VIDEO_ID, v.getId());
+                            castCv.put(DatabaseHelper.COL_CAST_NAME, cm.getName());
+                            castCv.put(DatabaseHelper.COL_CAST_ROLE, cm.getRole());
+                            castCv.put(DatabaseHelper.COL_CAST_AVATAR, cm.getAvatarUrl());
+                            db.insertWithOnConflict(DatabaseHelper.TABLE_CAST, null, castCv, SQLiteDatabase.CONFLICT_REPLACE);
+                        }
+                    }
+                }
+            }
+            db.setTransactionSuccessful();
+        } finally {
+            db.endTransaction();
+        }
+    }
+
     public boolean updateVideoTitle(String videoId, String newTitle) {
         SQLiteDatabase db = dbHelper.getWritableDatabase();
         ContentValues cv = new ContentValues();

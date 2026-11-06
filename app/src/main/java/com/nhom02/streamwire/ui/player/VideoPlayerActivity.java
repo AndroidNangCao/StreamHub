@@ -9,6 +9,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
+import android.util.Log;
 import android.view.GestureDetector;
 import android.view.MotionEvent;
 import android.view.View;
@@ -17,11 +18,16 @@ import android.view.WindowManager;
 import android.widget.SeekBar;
 import android.widget.Toast;
 
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.media3.common.MediaItem;
+import androidx.media3.common.PlaybackException;
 import androidx.media3.common.PlaybackParameters;
 import androidx.media3.common.Player;
+import androidx.media3.datasource.DefaultDataSource;
+import androidx.media3.datasource.DefaultHttpDataSource;
 import androidx.media3.exoplayer.ExoPlayer;
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
 
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.nhom02.streamwire.R;
@@ -38,6 +44,8 @@ import java.util.Locale;
 
 public class VideoPlayerActivity extends AppCompatActivity implements SensorHelper.OnShakeListener {
 
+    private static final String TAG = "VideoPlayerActivity";
+
     private ActivityVideoPlayerBinding binding;
     private ExoPlayer player;
     private Video currentVideo;
@@ -50,8 +58,13 @@ public class VideoPlayerActivity extends AppCompatActivity implements SensorHelp
     private EpisodeAdapter episodeAdapter;
 
     private boolean isFullscreen = false;
-    private final Handler progressHandler = new Handler(Looper.getMainLooper());
+    private boolean isMuted = false;
+    private boolean isFallbackAttempted = false;
     private boolean isUserSeeking = false;
+
+    private final Handler progressHandler = new Handler(Looper.getMainLooper());
+    private final Handler autoHideHandler = new Handler(Looper.getMainLooper());
+    private final Runnable autoHideRunnable = this::hideControls;
 
     private final Runnable updateProgressRunnable = new Runnable() {
         @Override
@@ -86,6 +99,9 @@ public class VideoPlayerActivity extends AppCompatActivity implements SensorHelp
         setupCustomControls();
         setupTouchGestures();
         setupEpisodesList();
+
+        // Ban đầu hiển thị controls, sau 4s tự ẩn
+        showControls();
     }
 
     private void extractIntentData() {
@@ -111,34 +127,50 @@ public class VideoPlayerActivity extends AppCompatActivity implements SensorHelp
                 binding.customControls.tvPlayerTopTitle.setText(currentVideo.getTitle() + " - " + currentEpisode.getTitle());
                 binding.tvPlayerEpisodeDetail.setText("Tập " + currentEpisode.getEpisodeNumber() + ": " + currentEpisode.getTitle() + " (" + currentEpisode.getDuration() + ")");
                 binding.tvPlayerSynopsis.setText(currentEpisode.getDescription());
+            } else {
+                binding.customControls.tvPlayerTopTitle.setText(currentVideo.getTitle());
+                binding.tvPlayerEpisodeDetail.setText(currentVideo.getQuality() + " • " + currentVideo.getDuration());
+                binding.tvPlayerSynopsis.setText(currentVideo.getDescription());
             }
         }
     }
 
     private void setupPlayer() {
-        player = new ExoPlayer.Builder(this).build();
+        // Cấu hình HTTP DataSource có Browser User-Agent và timeout
+        DefaultHttpDataSource.Factory httpFactory = new DefaultHttpDataSource.Factory()
+                .setUserAgent("Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 StreamWire/1.0")
+                .setConnectTimeoutMs(15000)
+                .setReadTimeoutMs(15000)
+                .setAllowCrossProtocolRedirects(true);
+
+        DefaultDataSource.Factory dataSourceFactory = new DefaultDataSource.Factory(this, httpFactory);
+
+        player = new ExoPlayer.Builder(this)
+                .setMediaSourceFactory(new DefaultMediaSourceFactory(dataSourceFactory))
+                .build();
+
         binding.exoPlayerView.setPlayer(player);
 
-        String videoUrl = currentEpisode != null && currentEpisode.getVideoUrl() != null ?
+        String videoUrl = currentEpisode != null && currentEpisode.getVideoUrl() != null && !currentEpisode.getVideoUrl().isEmpty() ?
                 currentEpisode.getVideoUrl() : (currentVideo != null ? currentVideo.getVideoUrl() : "");
 
         if (videoUrl == null || videoUrl.isEmpty()) {
-            videoUrl = "https://storage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4";
+            videoUrl = "https://media.w3.org/2010/05/sintel/trailer.mp4";
         }
 
-        MediaItem mediaItem = MediaItem.fromUri(Uri.parse(videoUrl));
-        player.setMediaItem(mediaItem);
-
-        if (startPositionMs > 0) {
-            player.seekTo(startPositionMs);
-            Toast.makeText(this, "Tiếp tục xem từ: " + formatTime(startPositionMs), Toast.LENGTH_SHORT).show();
-        }
+        playMediaUrl(videoUrl, startPositionMs);
 
         player.addListener(new Player.Listener() {
             @Override
             public void onPlaybackStateChanged(int playbackState) {
                 if (playbackState == Player.STATE_BUFFERING) {
                     binding.playerLoadingBar.setVisibility(View.VISIBLE);
+                } else if (playbackState == Player.STATE_READY) {
+                    binding.playerLoadingBar.setVisibility(View.GONE);
+                    resetAutoHideTimer();
+                } else if (playbackState == Player.STATE_ENDED) {
+                    binding.playerLoadingBar.setVisibility(View.GONE);
+                    showControls();
                 } else {
                     binding.playerLoadingBar.setVisibility(View.GONE);
                 }
@@ -148,22 +180,66 @@ public class VideoPlayerActivity extends AppCompatActivity implements SensorHelp
             public void onIsPlayingChanged(boolean isPlaying) {
                 if (isPlaying) {
                     binding.customControls.btnPlayPause.setImageResource(R.drawable.ic_pause);
+                    resetAutoHideTimer();
                 } else {
                     binding.customControls.btnPlayPause.setImageResource(R.drawable.ic_play_arrow);
+                    showControls();
+                }
+            }
+
+            @Override
+            public void onPlayerError(@NonNull PlaybackException error) {
+                Log.e(TAG, "ExoPlayer playback error: " + error.getMessage(), error);
+                binding.playerLoadingBar.setVisibility(View.GONE);
+
+                if (!isFallbackAttempted) {
+                    isFallbackAttempted = true;
+                    Toast.makeText(VideoPlayerActivity.this,
+                            "Nguồn video trực tuyến không phản hồi. Đang phát bản dự phòng offline...",
+                            Toast.LENGTH_LONG).show();
+
+                    // Phát video cục bộ tích hợp sẵn trong res/raw/sample_video.mp4
+                    Uri localUri = Uri.parse("android.resource://" + getPackageName() + "/" + R.raw.sample_video);
+                    MediaItem localItem = MediaItem.fromUri(localUri);
+                    player.setMediaItem(localItem);
+                    player.prepare();
+                    player.play();
+                } else {
+                    Toast.makeText(VideoPlayerActivity.this,
+                            "Không thể phát video: " + error.getErrorCodeName(),
+                            Toast.LENGTH_SHORT).show();
+                    showControls();
                 }
             }
         });
 
-        player.prepare();
-        player.play();
         progressHandler.post(updateProgressRunnable);
     }
 
+    private void playMediaUrl(String url, long seekPositionMs) {
+        if (player == null) return;
+        MediaItem mediaItem = MediaItem.fromUri(Uri.parse(url));
+        player.setMediaItem(mediaItem);
+
+        if (seekPositionMs > 0) {
+            player.seekTo(seekPositionMs);
+            Toast.makeText(this, "Tiếp tục xem từ: " + formatTime(seekPositionMs), Toast.LENGTH_SHORT).show();
+        }
+
+        player.prepare();
+        player.play();
+    }
+
     private void setupCustomControls() {
+        // Bấm vào nền mờ custom controls để ẩn controls
+        binding.customControls.getRoot().setOnClickListener(v -> hideControls());
+
+        // Nút Back
         binding.customControls.btnPlayerBack.setOnClickListener(v -> finish());
 
-        // Play/Pause
+        // Nút Play/Pause
         binding.customControls.btnPlayPause.setOnClickListener(v -> {
+            resetAutoHideTimer();
             if (player != null) {
                 if (player.isPlaying()) {
                     player.pause();
@@ -174,10 +250,28 @@ public class VideoPlayerActivity extends AppCompatActivity implements SensorHelp
         });
 
         // Tua lùi 10s
-        binding.customControls.btnRewind10.setOnClickListener(v -> seekRelative(-10000));
+        binding.customControls.btnRewind10.setOnClickListener(v -> {
+            resetAutoHideTimer();
+            seekRelative(-10000);
+        });
 
         // Tua tới 10s
-        binding.customControls.btnForward10.setOnClickListener(v -> seekRelative(10000));
+        binding.customControls.btnForward10.setOnClickListener(v -> {
+            resetAutoHideTimer();
+            seekRelative(10000);
+        });
+
+        // Nút Âm lượng (Mute / Unmute)
+        binding.customControls.btnVolume.setOnClickListener(v -> {
+            resetAutoHideTimer();
+            if (player != null) {
+                isMuted = !isMuted;
+                player.setVolume(isMuted ? 0f : 1f);
+                binding.customControls.btnVolume.setImageResource(
+                        isMuted ? R.drawable.ic_volume_off : R.drawable.ic_volume_up);
+                Toast.makeText(this, isMuted ? "Đã tắt tiếng" : "Đã bật tiếng", Toast.LENGTH_SHORT).show();
+            }
+        });
 
         // SeekBar
         binding.customControls.playerSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
@@ -192,6 +286,7 @@ public class VideoPlayerActivity extends AppCompatActivity implements SensorHelp
             @Override
             public void onStartTrackingTouch(SeekBar seekBar) {
                 isUserSeeking = true;
+                autoHideHandler.removeCallbacks(autoHideRunnable);
             }
 
             @Override
@@ -201,11 +296,13 @@ public class VideoPlayerActivity extends AppCompatActivity implements SensorHelp
                     player.seekTo(targetMs);
                 }
                 isUserSeeking = false;
+                resetAutoHideTimer();
             }
         });
 
-        // Chọn chất lượng phát (1080p, 720p, 480p)
+        // Chọn chất lượng phát
         binding.customControls.btnPlayerQuality.setOnClickListener(v -> {
+            resetAutoHideTimer();
             String[] qualities = {"1080p Full HD", "720p HD", "480p SD", "Tự động (Auto)"};
             new MaterialAlertDialogBuilder(this)
                     .setTitle("Chất lượng video")
@@ -218,6 +315,7 @@ public class VideoPlayerActivity extends AppCompatActivity implements SensorHelp
 
         // Tốc độ phát (0.75x, 1x, 1.25x, 1.5x, 2x)
         binding.customControls.btnPlayerSpeed.setOnClickListener(v -> {
+            resetAutoHideTimer();
             String[] speeds = {"0.75x", "1.0x (Chuẩn)", "1.25x", "1.5x", "2.0x"};
             float[] speedValues = {0.75f, 1.0f, 1.25f, 1.5f, 2.0f};
             new MaterialAlertDialogBuilder(this)
@@ -232,12 +330,21 @@ public class VideoPlayerActivity extends AppCompatActivity implements SensorHelp
         });
 
         // Toàn màn hình (Fullscreen)
-        binding.customControls.btnFullscreenToggle.setOnClickListener(v -> toggleFullscreen());
+        binding.customControls.btnFullscreenToggle.setOnClickListener(v -> {
+            resetAutoHideTimer();
+            toggleFullscreen();
+        });
     }
 
     private void setupTouchGestures() {
-        // Cử chỉ chạm thông minh: Double tap 2 bên
+        // Cử chỉ chạm thông minh: Double tap 2 bên để tua 10s, Single tap để ẩn/hiện điều khiển
         GestureDetector leftDetector = new GestureDetector(this, new GestureDetector.SimpleOnGestureListener() {
+            @Override
+            public boolean onSingleTapConfirmed(MotionEvent e) {
+                toggleControls();
+                return true;
+            }
+
             @Override
             public boolean onDoubleTap(MotionEvent e) {
                 if (sessionManager.isSmartGesturesEnabled()) {
@@ -251,6 +358,12 @@ public class VideoPlayerActivity extends AppCompatActivity implements SensorHelp
 
         GestureDetector rightDetector = new GestureDetector(this, new GestureDetector.SimpleOnGestureListener() {
             @Override
+            public boolean onSingleTapConfirmed(MotionEvent e) {
+                toggleControls();
+                return true;
+            }
+
+            @Override
             public boolean onDoubleTap(MotionEvent e) {
                 if (sessionManager.isSmartGesturesEnabled()) {
                     seekRelative(10000);
@@ -261,8 +374,40 @@ public class VideoPlayerActivity extends AppCompatActivity implements SensorHelp
             }
         });
 
-        binding.gestureLeftRewind.setOnTouchListener((v, event) -> leftDetector.onTouchEvent(event));
-        binding.gestureRightForward.setOnTouchListener((v, event) -> rightDetector.onTouchEvent(event));
+        binding.gestureLeftRewind.setOnTouchListener((v, event) -> {
+            leftDetector.onTouchEvent(event);
+            return true;
+        });
+
+        binding.gestureRightForward.setOnTouchListener((v, event) -> {
+            rightDetector.onTouchEvent(event);
+            return true;
+        });
+    }
+
+    private void toggleControls() {
+        if (binding.customControls.getRoot().getVisibility() == View.VISIBLE) {
+            hideControls();
+        } else {
+            showControls();
+        }
+    }
+
+    private void showControls() {
+        binding.customControls.getRoot().setVisibility(View.VISIBLE);
+        resetAutoHideTimer();
+    }
+
+    private void hideControls() {
+        binding.customControls.getRoot().setVisibility(View.GONE);
+        autoHideHandler.removeCallbacks(autoHideRunnable);
+    }
+
+    private void resetAutoHideTimer() {
+        autoHideHandler.removeCallbacks(autoHideRunnable);
+        if (player != null && player.isPlaying()) {
+            autoHideHandler.postDelayed(autoHideRunnable, 4000);
+        }
     }
 
     private void setupEpisodesList() {
@@ -284,15 +429,14 @@ public class VideoPlayerActivity extends AppCompatActivity implements SensorHelp
 
     private void changeEpisode(Episode episode) {
         this.currentEpisode = episode;
+        this.isFallbackAttempted = false;
         saveCurrentProgressToSQLite();
 
-        if (player != null) {
-            player.stop();
-            MediaItem nextItem = MediaItem.fromUri(Uri.parse(episode.getVideoUrl()));
-            player.setMediaItem(nextItem);
-            player.prepare();
-            player.play();
+        String url = episode.getVideoUrl();
+        if (url == null || url.isEmpty()) {
+            url = "https://media.w3.org/2010/05/sintel/trailer.mp4";
         }
+        playMediaUrl(url, 0L);
 
         binding.customControls.tvPlayerTopTitle.setText(currentVideo.getTitle() + " - " + episode.getTitle());
         binding.tvPlayerEpisodeDetail.setText("Tập " + episode.getEpisodeNumber() + ": " + episode.getTitle() + " (" + episode.getDuration() + ")");
@@ -385,7 +529,8 @@ public class VideoPlayerActivity extends AppCompatActivity implements SensorHelp
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        progressHandler.removeCallbacks(updateProgressRunnable);
+        autoHideHandler.removeCallbacksAndMessages(null);
+        progressHandler.removeCallbacksAndMessages(null);
         if (player != null) {
             player.release();
             player = null;

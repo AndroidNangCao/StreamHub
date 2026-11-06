@@ -41,14 +41,14 @@
         <!-- Màn hình 3: Chi tiết Video -->
         <activity
             android:name="com.nhom02.streamwire.ui.detail.VideoDetailActivity"
-            android:exported="false"
+            android:exported="true"
             android:screenOrientation="portrait" />
 
         <!-- Màn hình 4: Trình phát Video (ExoPlayer - Hỗ trợ xoay ngang Fullscreen) -->
         <activity
             android:name="com.nhom02.streamwire.ui.player.VideoPlayerActivity"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
-            android:exported="false"
+            android:exported="true"
             android:theme="@style/Theme.StreamWire" />
 
     </application>
