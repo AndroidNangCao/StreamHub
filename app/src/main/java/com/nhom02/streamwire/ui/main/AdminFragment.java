@@ -247,31 +247,68 @@ public class AdminFragment extends Fragment {
         layout.setPadding(40, 20, 40, 20);
 
         EditText etTitle = new EditText(requireContext());
-        etTitle.setHint("Tên video / Phim mới");
+        etTitle.setHint("Tên video / Phim mới (*)");
         layout.addView(etTitle);
 
         EditText etCat = new EditText(requireContext());
-        etCat.setHint("Thể loại (Hành Động, Viễn Tưởng...)");
+        etCat.setHint("Thể loại (VD: Hành Động, Hoạt Hình, Hài Kịch)");
         layout.addView(etCat);
 
+        EditText etDesc = new EditText(requireContext());
+        etDesc.setHint("Mô tả tóm tắt nội dung");
+        layout.addView(etDesc);
+
+        EditText etVideoUrl = new EditText(requireContext());
+        etVideoUrl.setHint("Link video (.mp4) (Mặc định: W3C Sintel Full HD)");
+        etVideoUrl.setText("https://media.w3.org/2010/05/sintel/trailer.mp4");
+        layout.addView(etVideoUrl);
+
+        EditText etThumbUrl = new EditText(requireContext());
+        etThumbUrl.setHint("Link ảnh bìa Thumbnail");
+        etThumbUrl.setText("https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=800&q=80");
+        layout.addView(etThumbUrl);
+
+        EditText etDuration = new EditText(requireContext());
+        etDuration.setHint("Thời lượng (VD: 45:00)");
+        etDuration.setText("45:00");
+        layout.addView(etDuration);
+
         new MaterialAlertDialogBuilder(requireContext())
-                .setTitle("Thêm video mới vào SQLite")
+                .setTitle("➕ Thêm video mới vào Database SQLite")
                 .setView(layout)
                 .setNegativeButton("Hủy", null)
-                .setPositiveButton("Lưu vào SQLite", (dialog, which) -> {
+                .setPositiveButton("Lưu vào Database", (dialog, which) -> {
                     String title = etTitle.getText().toString().trim();
                     String cat = etCat.getText().toString().trim();
+                    String desc = etDesc.getText().toString().trim();
+                    String url = etVideoUrl.getText().toString().trim();
+                    String thumb = etThumbUrl.getText().toString().trim();
+                    String duration = etDuration.getText().toString().trim();
 
                     if (!TextUtils.isEmpty(title)) {
+                        if (TextUtils.isEmpty(url)) {
+                            url = "https://media.w3.org/2010/05/sintel/trailer.mp4";
+                        }
+                        if (TextUtils.isEmpty(thumb)) {
+                            thumb = "https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=800&q=80";
+                        }
+                        if (TextUtils.isEmpty(duration)) {
+                            duration = "45:00";
+                        }
+                        if (TextUtils.isEmpty(cat)) {
+                            cat = "Hành Động";
+                        }
+                        if (TextUtils.isEmpty(desc)) {
+                            desc = "Video mới được thêm bởi Quản trị viên StreamWire.";
+                        }
+
                         Video newV = new Video("v_" + System.currentTimeMillis(),
-                                title, "Video mới được thêm bởi Quản trị viên StreamWire.",
-                                "https://storage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
-                                "https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=800&q=80",
-                                "45:00", 45 * 60 * 1000L, "1 lượt xem", 9.5, 2026, "13+", "1080p",
-                                TextUtils.isEmpty(cat) ? "Phim Mới" : cat, "Vừa xong");
+                                title, desc, url, thumb,
+                                duration, 45 * 60 * 1000L, "1 lượt xem", 9.5, 2026, "13+", "1080p",
+                                cat, "Vừa xong");
                         newV.setStatus("ACTIVE");
 
-                        // Lưu vào SQLite
+                        // Lưu vĩnh viễn vào SQLite
                         dbManager.insertVideo(newV);
 
                         adminVideos.add(0, newV);
@@ -279,7 +316,9 @@ public class AdminFragment extends Fragment {
                         binding.rvAdminVideos.scrollToPosition(0);
                         refreshStats();
 
-                        Toast.makeText(requireContext(), "Đã lưu vĩnh viễn video vào SQLite: " + title, Toast.LENGTH_SHORT).show();
+                        Toast.makeText(requireContext(), "✓ Đã thêm video vào SQLite thành công: " + title, Toast.LENGTH_SHORT).show();
+                    } else {
+                        Toast.makeText(requireContext(), "Vui lòng nhập tên video", Toast.LENGTH_SHORT).show();
                     }
                 })
                 .show();

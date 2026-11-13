@@ -248,6 +248,13 @@ public class HomeFragment extends Fragment {
     }
 
     @Override
+    public void onResume() {
+        super.onResume();
+        // Luôn cập nhật lại dữ liệu mới nhất từ SQLite mỗi khi quay lại Trang chủ
+        loadDataFromDatabase();
+    }
+
+    @Override
     public void onDestroyView() {
         super.onDestroyView();
         binding = null;

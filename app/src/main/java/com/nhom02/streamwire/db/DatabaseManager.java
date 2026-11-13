@@ -145,6 +145,15 @@ public class DatabaseManager {
     // 2. CATEGORIES
     // ==========================================
 
+    public void addCategory(String name) {
+        if (name == null || name.trim().isEmpty()) return;
+        SQLiteDatabase db = dbHelper.getWritableDatabase();
+        ContentValues cv = new ContentValues();
+        cv.put(DatabaseHelper.COL_CAT_ID, "cat_" + Math.abs(name.trim().hashCode()));
+        cv.put(DatabaseHelper.COL_CAT_NAME, name.trim());
+        db.insertWithOnConflict(DatabaseHelper.TABLE_CATEGORIES, null, cv, SQLiteDatabase.CONFLICT_IGNORE);
+    }
+
     public List<Category> getCategories() {
         List<Category> list = new ArrayList<>();
         SQLiteDatabase db = dbHelper.getReadableDatabase();
@@ -295,6 +304,10 @@ public class DatabaseManager {
         cv.put(DatabaseHelper.COL_VIDEO_PUBLISHED, v.getPublishedAt());
 
         long result = db.insertWithOnConflict(DatabaseHelper.TABLE_VIDEOS, null, cv, SQLiteDatabase.CONFLICT_REPLACE);
+
+        if (v.getCategory() != null && !v.getCategory().trim().isEmpty()) {
+            addCategory(v.getCategory().trim());
+        }
 
         // Add default episode if none
         if (v.getEpisodes() == null || v.getEpisodes().isEmpty()) {
