@@ -1,4 +1,4 @@
-package com.example.streamhub;
+package com.nhom02.streamwire;
 
 import android.content.Context;
 
@@ -19,8 +19,7 @@ import static org.junit.Assert.*;
 public class ExampleInstrumentedTest {
     @Test
     public void useAppContext() {
-        // Context of the app under test.
         Context appContext = InstrumentationRegistry.getInstrumentation().getTargetContext();
-        assertEquals("com.example.streamhub", appContext.getPackageName());
+        assertEquals("com.nhom02.streamwire", appContext.getPackageName());
     }
 }

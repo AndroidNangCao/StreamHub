@@ -1,4 +1,4 @@
-package com.example.streamhub;
+package com.nhom02.streamwire;
 
 import org.junit.Test;
 
