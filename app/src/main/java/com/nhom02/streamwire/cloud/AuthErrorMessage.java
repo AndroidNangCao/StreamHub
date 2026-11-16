@@ -19,6 +19,8 @@ public final class AuthErrorMessage {
             message = "Email không hợp lệ. Kiểm tra lại địa chỉ email.";
         } else if (diagnostic.contains("WEAK_PASSWORD")) {
             message = "Mật khẩu chưa đáp ứng chính sách Firebase. Dùng ít nhất 6 ký tự và các yêu cầu mật khẩu đã bật trong Console.";
+        } else if (!"AUTH".equals(stage) && (diagnostic.contains("SERVICE_DISABLED") || diagnostic.contains("UNAVAILABLE") || diagnostic.contains("DEADLINE_EXCEEDED"))) {
+            message = "Chưa truy cập được Cloud Firestore. Kiểm tra đã bật Cloud Firestore API và tạo Firestore database (default) trong đúng project, rồi kiểm tra kết nối Internet. Bật Authentication chưa tự bật Firestore.";
         } else if (diagnostic.contains("NETWORK_REQUEST_FAILED") || diagnostic.contains("UNAVAILABLE") || diagnostic.contains("DEADLINE_EXCEEDED")) {
             message = "Không kết nối được Firebase. Kiểm tra Internet trên thiết bị/giả lập rồi thử lại.";
         } else if (!"AUTH".equals(stage) && diagnostic.contains("PERMISSION_DENIED")) {
