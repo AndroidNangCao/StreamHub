@@ -4,7 +4,6 @@ import android.content.Intent;
 import android.os.Bundle;
 import android.text.Editable;
 import android.text.TextWatcher;
-import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -20,8 +19,6 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.nhom02.streamwire.R;
 import com.nhom02.streamwire.adapter.CategoryChipAdapter;
 import com.nhom02.streamwire.adapter.VideoAdapter;
-import com.nhom02.streamwire.api.ApiClient;
-import com.nhom02.streamwire.api.ApiService;
 import com.nhom02.streamwire.databinding.FragmentHomeBinding;
 import com.nhom02.streamwire.db.DatabaseManager;
 import com.nhom02.streamwire.model.Category;
@@ -31,17 +28,12 @@ import com.nhom02.streamwire.ui.detail.VideoDetailActivity;
 import java.util.ArrayList;
 import java.util.List;
 
-import retrofit2.Call;
-import retrofit2.Callback;
-import retrofit2.Response;
 
 public class HomeFragment extends Fragment {
 
-    private static final String TAG = "HomeFragment";
 
     private FragmentHomeBinding binding;
     private DatabaseManager dbManager;
-    private ApiService apiService;
     private CategoryChipAdapter categoryAdapter;
     private VideoAdapter trendingAdapter;
     private VideoAdapter recommendedAdapter;
@@ -49,6 +41,8 @@ public class HomeFragment extends Fragment {
     private List<Video> fullTrendingList = new ArrayList<>();
     private List<Video> fullRecommendedList = new ArrayList<>();
     private Video heroVideo;
+    private int currentSort;
+    private String currentCategory = "Tất cả";
 
     @Nullable
     @Override
@@ -61,7 +55,7 @@ public class HomeFragment extends Fragment {
     public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
         dbManager = DatabaseManager.getInstance(requireContext());
-        apiService = ApiClient.getService(requireContext());
+
 
         setupAdapters();
         setupSearchAndFilter();
@@ -70,13 +64,12 @@ public class HomeFragment extends Fragment {
         // 1. Tải trước từ SQLite cache để hiển thị ngay lập tức (Offline-First)
         loadDataFromDatabase();
 
-        // 2. Tự động gọi Public REST API qua mạng để cập nhật danh mục video mới nhất
-        fetchDataFromApi();
+
     }
 
     private void setupSwipeRefresh() {
         binding.swipeRefreshHome.setColorSchemeResources(R.color.secondary, R.color.primary);
-        binding.swipeRefreshHome.setOnRefreshListener(this::fetchDataFromApi);
+        binding.swipeRefreshHome.setOnRefreshListener(() -> { loadDataFromDatabase(); binding.swipeRefreshHome.setRefreshing(false); });
     }
 
     private void setupAdapters() {
@@ -97,7 +90,8 @@ public class HomeFragment extends Fragment {
         binding.rvRecommended.setAdapter(recommendedAdapter);
 
         binding.tvSeeAllTrending.setOnClickListener(v -> {
-            trendingAdapter.setData(dbManager.getAllVideos());
+            currentSort = 3;
+            applyFilters();
             Toast.makeText(requireContext(), "Đang hiển thị toàn bộ video trong kho", Toast.LENGTH_SHORT).show();
         });
 
@@ -107,59 +101,8 @@ public class HomeFragment extends Fragment {
         });
     }
 
-    /**
-     * Gọi Public REST API qua Retrofit để lấy danh mục và danh sách video mới nhất từ máy chủ
-     */
-    private void fetchDataFromApi() {
-        if (!isAdded()) return;
-        binding.swipeRefreshHome.setRefreshing(true);
-
-        apiService.getCategories().enqueue(new Callback<List<Category>>() {
-            @Override
-            public void onResponse(@NonNull Call<List<Category>> call, @NonNull Response<List<Category>> catResponse) {
-                final List<Category> fetchedCategories = catResponse.isSuccessful() ? catResponse.body() : null;
-
-                apiService.getVideos().enqueue(new Callback<List<Video>>() {
-                    @Override
-                    public void onResponse(@NonNull Call<List<Video>> call, @NonNull Response<List<Video>> vidResponse) {
-                        if (!isAdded()) return;
-                        binding.swipeRefreshHome.setRefreshing(false);
-
-                        if (vidResponse.isSuccessful() && vidResponse.body() != null) {
-                            List<Video> fetchedVideos = vidResponse.body();
-                            // Lưu đồng bộ dữ liệu API vào SQLite cục bộ
-                            dbManager.syncFromApi(fetchedCategories, fetchedVideos);
-                            // Hiển thị dữ liệu mới lên giao diện
-                            loadDataFromDatabase();
-                            Toast.makeText(requireContext(), "✓ Đã đồng bộ " + fetchedVideos.size() + " video từ Public Cloud API", Toast.LENGTH_SHORT).show();
-                        } else {
-                            loadDataFromDatabase();
-                        }
-                    }
-
-                    @Override
-                    public void onFailure(@NonNull Call<List<Video>> call, @NonNull Throwable t) {
-                        if (!isAdded()) return;
-                        Log.e(TAG, "Lỗi kết nối API videos: " + t.getMessage());
-                        binding.swipeRefreshHome.setRefreshing(false);
-                        loadDataFromDatabase();
-                        Toast.makeText(requireContext(), "Đang sử dụng dữ liệu ngoại tuyến (Offline SQLite)", Toast.LENGTH_SHORT).show();
-                    }
-                });
-            }
-
-            @Override
-            public void onFailure(@NonNull Call<List<Category>> call, @NonNull Throwable t) {
-                if (!isAdded()) return;
-                Log.e(TAG, "Lỗi kết nối API categories: " + t.getMessage());
-                binding.swipeRefreshHome.setRefreshing(false);
-                loadDataFromDatabase();
-            }
-        });
-    }
-
     private void loadDataFromDatabase() {
-        if (!isAdded()) return;
+        if (!isAdded() || binding == null || categoryAdapter == null) return;
 
         // 1. Categories
         List<Category> categories = dbManager.getCategories();
@@ -167,6 +110,7 @@ public class HomeFragment extends Fragment {
 
         // 2. Hero Video
         heroVideo = dbManager.getHeroVideo();
+        binding.cardHeroToday.setVisibility(heroVideo == null ? View.GONE : View.VISIBLE);
         if (heroVideo != null) {
             binding.tvHeroTitle.setText(heroVideo.getTitle());
             binding.tvHeroDesc.setText(heroVideo.getDescription());
@@ -181,11 +125,13 @@ public class HomeFragment extends Fragment {
         }
 
         // 3. Trending & Recommended Videos from SQLite
-        fullTrendingList = dbManager.getTrendingVideos();
+        fullTrendingList = dbManager.getPublicVideos(0);
         trendingAdapter.setData(fullTrendingList);
 
         fullRecommendedList = dbManager.getRecommendedVideos();
         recommendedAdapter.setData(fullRecommendedList);
+        applyFilters();
+        binding.tvEmptyLibrary.setVisibility(fullTrendingList.isEmpty() ? View.VISIBLE : View.GONE);
     }
 
     private void setupSearchAndFilter() {
@@ -203,15 +149,12 @@ public class HomeFragment extends Fragment {
         });
 
         binding.btnFilterHome.setOnClickListener(v -> {
-            String[] filters = {"Mới nhất", "Lượt xem cao", "Đánh giá cao (★)", "Tất cả kho"};
+            String[] filters = {"Mới nhất", "Lượt xem cao", "Đánh giá cao (★)", "Tất cả kho", "Yêu thích"};
             new MaterialAlertDialogBuilder(requireContext())
                     .setTitle("Bộ lọc sắp xếp")
                     .setItems(filters, (dialog, which) -> {
-                        if (which == 3) {
-                            trendingAdapter.setData(dbManager.getAllVideos());
-                        } else {
-                            trendingAdapter.setData(dbManager.getTrendingVideos());
-                        }
+                        currentSort = which;
+                        applyFilters();
                         Toast.makeText(requireContext(), "Đã áp dụng: " + filters[which], Toast.LENGTH_SHORT).show();
                     })
                     .show();
@@ -219,26 +162,26 @@ public class HomeFragment extends Fragment {
     }
 
     private void filterVideosByCategory(String categoryName) {
-        if ("Tất cả".equalsIgnoreCase(categoryName)) {
-            trendingAdapter.setData(fullTrendingList);
-            recommendedAdapter.setData(fullRecommendedList);
-            return;
-        }
-
-        List<Video> filtered = dbManager.getVideosByCategory(categoryName);
-        trendingAdapter.setData(filtered);
-        recommendedAdapter.setData(filtered);
+        currentCategory = categoryName;
+        applyFilters();
     }
 
     private void filterVideosByQuery(String query) {
-        if (query.trim().isEmpty()) {
-            trendingAdapter.setData(fullTrendingList);
-            recommendedAdapter.setData(fullRecommendedList);
-            return;
+        applyFilters();
+    }
+
+    private void applyFilters() {
+        String query = binding.etSearchHome.getText().toString().trim().toLowerCase(java.util.Locale.ROOT);
+        List<Video> source = currentSort == 4 ? dbManager.getFavoriteVideos() : dbManager.getPublicVideos(currentSort);
+        List<Video> filtered = new ArrayList<>();
+        for (Video video : source) {
+            String category = video.getCategory() == null ? "" : video.getCategory();
+            boolean categoryMatches = "Tất cả".equals(currentCategory) || category.contains(currentCategory);
+            String text = (video.getTitle() + " " + category).toLowerCase(java.util.Locale.ROOT);
+            if (categoryMatches && text.contains(query)) filtered.add(video);
         }
-        List<Video> searchResults = dbManager.searchVideos(query);
-        trendingAdapter.setData(searchResults);
-        recommendedAdapter.setData(searchResults);
+        trendingAdapter.setData(filtered);
+        recommendedAdapter.setData(filtered);
     }
 
     private void openVideoDetail(Video video) {

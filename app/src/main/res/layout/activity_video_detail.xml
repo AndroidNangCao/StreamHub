@@ -91,7 +91,7 @@
                         android:layout_height="match_parent"
                         android:background="@drawable/bg_hero_gradient" />
 
-                    <!-- Badge: BẢN XEM THỬ 1080P -->
+                    <!-- Badge: PHÁT VIDEO -->
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
@@ -102,7 +102,7 @@
                         android:paddingTop="4dp"
                         android:paddingEnd="8dp"
                         android:paddingBottom="4dp"
-                        android:text="BẢN XEM THỬ 1080P"
+                        android:text="PHÁT VIDEO"
                         android:textColor="#FFFFFF"
                         android:textSize="10sp"
                         android:textStyle="bold" />

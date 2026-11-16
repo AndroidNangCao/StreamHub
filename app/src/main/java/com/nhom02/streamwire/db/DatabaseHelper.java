@@ -1,24 +1,15 @@
 package com.nhom02.streamwire.db;
 
-import android.content.ContentValues;
 import android.content.Context;
 import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteOpenHelper;
 
-import com.nhom02.streamwire.model.CastMember;
-import com.nhom02.streamwire.model.Category;
-import com.nhom02.streamwire.model.Episode;
-import com.nhom02.streamwire.model.User;
-import com.nhom02.streamwire.model.Video;
-import com.nhom02.streamwire.model.WatchHistory;
-import com.nhom02.streamwire.utils.MockDataGenerator;
 
-import java.util.List;
 
 public class DatabaseHelper extends SQLiteOpenHelper {
 
     private static final String DATABASE_NAME = "streamwire.db";
-    private static final int DATABASE_VERSION = 2;
+    private static final int DATABASE_VERSION = 3;
 
     // Table: Users
     public static final String TABLE_USERS = "users";
@@ -168,140 +159,26 @@ public class DatabaseHelper extends SQLiteOpenHelper {
                 + "FOREIGN KEY(" + COL_HIST_VIDEO_ID + ") REFERENCES " + TABLE_VIDEOS + "(" + COL_VIDEO_ID + ") ON DELETE CASCADE)";
         db.execSQL(createHistoryTable);
 
-        // 7. Seed Initial Data
-        seedInitialData(db);
+        db.execSQL("ALTER TABLE watch_history ADD COLUMN user_id TEXT NOT NULL DEFAULT 'guest'");
+        createLocalTables(db);
     }
 
-    private void seedInitialData(SQLiteDatabase db) {
-        // Seed Users
-        insertUserRaw(db, "u_admin", "admin@streamwire.com", "admin_boss", "Quản Trị Viên", "123456", "ADMIN", 0, "");
-        insertUserRaw(db, "u1", "user@streamwire.com", "an_nguyen99", "Nguyễn Văn An", "123456", "USER", 0, "");
-        insertUserRaw(db, "u2", "bich.tran@email.com", "bich_tt", "Trần Thị Bích", "123456", "STANDARD", 1, "");
-        insertUserRaw(db, "u3", "nam.creator@email.com", "nam_creator", "Lê Hoàng Nam", "123456", "CREATOR", 0, "");
-
-        // Seed Categories
-        List<Category> categories = MockDataGenerator.getCategories();
-        for (Category c : categories) {
-            ContentValues cv = new ContentValues();
-            cv.put(COL_CAT_ID, c.getId());
-            cv.put(COL_CAT_NAME, c.getName());
-            db.insert(TABLE_CATEGORIES, null, cv);
-        }
-
-        // Seed Hero Video
-        Video hero = MockDataGenerator.getHeroVideo();
-        insertVideoWithDetailsRaw(db, hero);
-
-        // Seed Sample Detailed Video
-        Video sampleDetail = MockDataGenerator.getDetailedSampleVideo();
-        insertVideoWithDetailsRaw(db, sampleDetail);
-
-        // Seed Trending Videos
-        List<Video> trending = MockDataGenerator.getTrendingVideos();
-        for (Video v : trending) {
-            insertVideoWithDetailsRaw(db, v);
-        }
-
-        // Seed Recommended Videos
-        List<Video> rec = MockDataGenerator.getRecommendedVideos();
-        for (Video v : rec) {
-            insertVideoWithDetailsRaw(db, v);
-        }
-
-        // Seed Admin Reported & Pending Videos
-        List<Video> adminVids = MockDataGenerator.getAdminVideos();
-        for (Video v : adminVids) {
-            insertVideoWithDetailsRaw(db, v);
-        }
-
-        // Seed Watch History
-        List<WatchHistory> histories = MockDataGenerator.getWatchHistories();
-        for (WatchHistory h : histories) {
-            if (h.getVideo() != null) {
-                ContentValues cv = new ContentValues();
-                cv.put(COL_HIST_ID, h.getId());
-                cv.put(COL_HIST_VIDEO_ID, h.getVideo().getId());
-                cv.put(COL_HIST_EP_TITLE, h.getEpisodeTitle());
-                cv.put(COL_HIST_LAST_POS, h.getLastPositionMs());
-                cv.put(COL_HIST_TOTAL_DUR, h.getTotalDurationMs());
-                cv.put(COL_HIST_UPDATED, h.getUpdatedAt());
-                db.insertWithOnConflict(TABLE_HISTORY, null, cv, SQLiteDatabase.CONFLICT_REPLACE);
-            }
-        }
+    private void createLocalTables(SQLiteDatabase db) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS favorites (user_id TEXT NOT NULL, video_id TEXT NOT NULL REFERENCES videos(id) ON DELETE CASCADE, PRIMARY KEY(user_id, video_id))");
+        db.execSQL("CREATE TABLE IF NOT EXISTS settings (user_id TEXT NOT NULL, name TEXT NOT NULL, value TEXT, PRIMARY KEY(user_id, name))");
+        db.execSQL("CREATE TABLE IF NOT EXISTS downloads (id INTEGER PRIMARY KEY, user_id TEXT NOT NULL, video_id TEXT NOT NULL REFERENCES videos(id) ON DELETE CASCADE)");
     }
 
-    private void insertUserRaw(SQLiteDatabase db, String id, String email, String username,
-                               String fullName, String password, String role, int isLocked, String avatar) {
-        ContentValues cv = new ContentValues();
-        cv.put(COL_USER_ID, id);
-        cv.put(COL_USER_EMAIL, email);
-        cv.put(COL_USER_USERNAME, username);
-        cv.put(COL_USER_FULL_NAME, fullName);
-        cv.put(COL_USER_PASSWORD, password);
-        cv.put(COL_USER_ROLE, role);
-        cv.put(COL_USER_IS_LOCKED, isLocked);
-        cv.put(COL_USER_AVATAR, avatar);
-        db.insertWithOnConflict(TABLE_USERS, null, cv, SQLiteDatabase.CONFLICT_REPLACE);
-    }
-
-    private void insertVideoWithDetailsRaw(SQLiteDatabase db, Video v) {
-        ContentValues cv = new ContentValues();
-        cv.put(COL_VIDEO_ID, v.getId());
-        cv.put(COL_VIDEO_TITLE, v.getTitle());
-        cv.put(COL_VIDEO_DESC, v.getDescription());
-        cv.put(COL_VIDEO_URL, v.getVideoUrl());
-        cv.put(COL_VIDEO_THUMB, v.getThumbnailUrl());
-        cv.put(COL_VIDEO_DURATION, v.getDuration());
-        cv.put(COL_VIDEO_DURATION_MS, v.getDurationMs());
-        cv.put(COL_VIDEO_VIEWS, v.getViews());
-        cv.put(COL_VIDEO_RATING, v.getRating());
-        cv.put(COL_VIDEO_YEAR, v.getReleaseYear());
-        cv.put(COL_VIDEO_AGE, v.getAgeRating());
-        cv.put(COL_VIDEO_QUALITY, v.getQuality());
-        cv.put(COL_VIDEO_CATEGORY, v.getCategory());
-        cv.put(COL_VIDEO_STATUS, v.getStatus());
-        cv.put(COL_VIDEO_PUBLISHED, v.getPublishedAt());
-        db.insertWithOnConflict(TABLE_VIDEOS, null, cv, SQLiteDatabase.CONFLICT_REPLACE);
-
-        // Episodes
-        if (v.getEpisodes() != null && !v.getEpisodes().isEmpty()) {
-            for (Episode ep : v.getEpisodes()) {
-                ContentValues epCv = new ContentValues();
-                epCv.put(COL_EP_ID, ep.getId());
-                epCv.put(COL_EP_VIDEO_ID, v.getId());
-                epCv.put(COL_EP_NUMBER, ep.getEpisodeNumber());
-                epCv.put(COL_EP_TITLE, ep.getTitle());
-                epCv.put(COL_EP_DURATION, ep.getDuration());
-                epCv.put(COL_EP_THUMB, ep.getThumbnailUrl());
-                epCv.put(COL_EP_URL, ep.getVideoUrl());
-                epCv.put(COL_EP_DESC, ep.getDescription());
-                db.insertWithOnConflict(TABLE_EPISODES, null, epCv, SQLiteDatabase.CONFLICT_REPLACE);
-            }
-        }
-
-        // Cast
-        if (v.getCastList() != null && !v.getCastList().isEmpty()) {
-            for (CastMember cm : v.getCastList()) {
-                ContentValues castCv = new ContentValues();
-                castCv.put(COL_CAST_ID, cm.getId());
-                castCv.put(COL_CAST_VIDEO_ID, v.getId());
-                castCv.put(COL_CAST_NAME, cm.getName());
-                castCv.put(COL_CAST_ROLE, cm.getRole());
-                castCv.put(COL_CAST_AVATAR, cm.getAvatarUrl());
-                db.insertWithOnConflict(TABLE_CAST, null, castCv, SQLiteDatabase.CONFLICT_REPLACE);
-            }
-        }
+    @Override
+    public void onConfigure(SQLiteDatabase db) {
+        db.setForeignKeyConstraintsEnabled(true);
     }
 
     @Override
     public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
-        db.execSQL("DROP TABLE IF EXISTS " + TABLE_HISTORY);
-        db.execSQL("DROP TABLE IF EXISTS " + TABLE_CAST);
-        db.execSQL("DROP TABLE IF EXISTS " + TABLE_EPISODES);
-        db.execSQL("DROP TABLE IF EXISTS " + TABLE_VIDEOS);
-        db.execSQL("DROP TABLE IF EXISTS " + TABLE_CATEGORIES);
-        db.execSQL("DROP TABLE IF EXISTS " + TABLE_USERS);
-        onCreate(db);
+        if (oldVersion < 3) {
+            db.execSQL("ALTER TABLE watch_history ADD COLUMN user_id TEXT NOT NULL DEFAULT 'legacy'");
+            createLocalTables(db);
+        }
     }
 }
-

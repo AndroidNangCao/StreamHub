@@ -90,6 +90,14 @@
             android:textSize="15sp"
             android:textStyle="bold" />
 
+        <TextView
+            android:id="@+id/tvEmptyLibrary"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:padding="20dp"
+            android:text="Thư viện đang trống. Đăng ký tài khoản đầu tiên để quản trị, sau đó thêm video trong mục Quản trị."
+            android:visibility="gone" />
+
         <com.google.android.material.card.MaterialCardView
             android:id="@+id/cardHeroToday"
             style="@style/Widget.StreamWire.CardView"

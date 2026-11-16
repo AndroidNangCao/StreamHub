@@ -20,6 +20,7 @@ public class DatabaseManager {
 
     private static DatabaseManager instance;
     private final DatabaseHelper dbHelper;
+    private final Context context;
 
     public static synchronized DatabaseManager getInstance(Context context) {
         if (instance == null) {
@@ -29,6 +30,7 @@ public class DatabaseManager {
     }
 
     private DatabaseManager(Context context) {
+        this.context = context;
         this.dbHelper = DatabaseHelper.getInstance(context);
     }
 
@@ -38,26 +40,25 @@ public class DatabaseManager {
 
     public User authenticate(String emailOrUsername, String password) {
         SQLiteDatabase db = dbHelper.getReadableDatabase();
-        String query = "SELECT * FROM " + DatabaseHelper.TABLE_USERS
-                + " WHERE (" + DatabaseHelper.COL_USER_EMAIL + " = ? OR "
-                + DatabaseHelper.COL_USER_USERNAME + " = ?) AND "
-                + DatabaseHelper.COL_USER_PASSWORD + " = ?";
-
-        Cursor cursor = db.rawQuery(query, new String[]{emailOrUsername, emailOrUsername, password});
-        User user = null;
-        if (cursor != null && cursor.moveToFirst()) {
-            user = cursorToUser(cursor);
-            cursor.close();
+        try (Cursor cursor = db.rawQuery("SELECT * FROM users WHERE email=? COLLATE NOCASE OR username=?", new String[]{emailOrUsername, emailOrUsername})) {
+            if (!cursor.moveToFirst()) return null;
+            String stored = cursor.getString(cursor.getColumnIndexOrThrow("password"));
+            if (!com.nhom02.streamwire.utils.PasswordHasher.verify(password, stored)) return null;
+            User user = cursorToUser(cursor);
+            if (!stored.startsWith("pbkdf2$")) updatePassword(user.getId(), password);
+            return user;
         }
-        return user;
     }
 
-    public boolean registerUser(String fullName, String email, String password) {
+    public synchronized boolean registerUser(String fullName, String email, String password) {
+        if (fullName == null || fullName.trim().isEmpty() || email == null || password == null || password.length() < 6) return false;
+        email = email.trim().toLowerCase(java.util.Locale.ROOT);
+        if (!android.util.Patterns.EMAIL_ADDRESS.matcher(email).matches()) return false;
         SQLiteDatabase db = dbHelper.getWritableDatabase();
 
         // Check if email already exists
         Cursor check = db.query(DatabaseHelper.TABLE_USERS, null,
-                DatabaseHelper.COL_USER_EMAIL + " = ?", new String[]{email}, null, null, null);
+                DatabaseHelper.COL_USER_EMAIL + " = ? COLLATE NOCASE", new String[]{email}, null, null, null);
         if (check != null && check.getCount() > 0) {
             check.close();
             return false;
@@ -65,15 +66,16 @@ public class DatabaseManager {
         if (check != null) check.close();
 
         String username = email.contains("@") ? email.split("@")[0] : email;
-        String id = "u_" + System.currentTimeMillis();
+        if (findUser(username) != null) username += "_" + java.util.UUID.randomUUID().toString().substring(0, 8);
+        String id = "u_" + java.util.UUID.randomUUID();
 
         ContentValues cv = new ContentValues();
         cv.put(DatabaseHelper.COL_USER_ID, id);
         cv.put(DatabaseHelper.COL_USER_EMAIL, email);
         cv.put(DatabaseHelper.COL_USER_USERNAME, username);
         cv.put(DatabaseHelper.COL_USER_FULL_NAME, fullName);
-        cv.put(DatabaseHelper.COL_USER_PASSWORD, password);
-        cv.put(DatabaseHelper.COL_USER_ROLE, "USER");
+        cv.put(DatabaseHelper.COL_USER_PASSWORD, com.nhom02.streamwire.utils.PasswordHasher.hash(password));
+        cv.put(DatabaseHelper.COL_USER_ROLE, getTotalUsersCount() == 0 ? "ADMIN" : "USER");
         cv.put(DatabaseHelper.COL_USER_IS_LOCKED, 0);
         cv.put(DatabaseHelper.COL_USER_AVATAR, "");
 
@@ -89,8 +91,8 @@ public class DatabaseManager {
             do {
                 list.add(cursorToUser(cursor));
             } while (cursor.moveToNext());
-            cursor.close();
         }
+        if (cursor != null) cursor.close();
         return list;
     }
 
@@ -113,7 +115,7 @@ public class DatabaseManager {
     public boolean updatePassword(String userId, String newPassword) {
         SQLiteDatabase db = dbHelper.getWritableDatabase();
         ContentValues cv = new ContentValues();
-        cv.put(DatabaseHelper.COL_USER_PASSWORD, newPassword);
+        cv.put(DatabaseHelper.COL_USER_PASSWORD, com.nhom02.streamwire.utils.PasswordHasher.hash(newPassword));
         int rows = db.update(DatabaseHelper.TABLE_USERS, cv, DatabaseHelper.COL_USER_ID + " = ?", new String[]{userId});
         return rows > 0;
     }
@@ -124,8 +126,8 @@ public class DatabaseManager {
         int count = 0;
         if (cursor != null && cursor.moveToFirst()) {
             count = cursor.getInt(0);
-            cursor.close();
         }
+        if (cursor != null) cursor.close();
         return count;
     }
 
@@ -156,18 +158,19 @@ public class DatabaseManager {
 
     public List<Category> getCategories() {
         List<Category> list = new ArrayList<>();
+        list.add(new Category("all", "Tất cả", true));
         SQLiteDatabase db = dbHelper.getReadableDatabase();
         Cursor cursor = db.query(DatabaseHelper.TABLE_CATEGORIES, null, null, null, null, null, DatabaseHelper.COL_CAT_ID + " ASC");
         if (cursor != null && cursor.moveToFirst()) {
-            boolean first = true;
+            boolean first = false;
             do {
                 String id = cursor.getString(cursor.getColumnIndexOrThrow(DatabaseHelper.COL_CAT_ID));
                 String name = cursor.getString(cursor.getColumnIndexOrThrow(DatabaseHelper.COL_CAT_NAME));
                 list.add(new Category(id, name, first));
                 first = false;
             } while (cursor.moveToNext());
-            cursor.close();
         }
+        if (cursor != null) cursor.close();
         return list;
     }
 
@@ -183,25 +186,25 @@ public class DatabaseManager {
             do {
                 list.add(cursorToVideo(cursor, false));
             } while (cursor.moveToNext());
-            cursor.close();
         }
+        if (cursor != null) cursor.close();
         return list;
     }
 
     public Video getHeroVideo() {
-        SQLiteDatabase db = dbHelper.getReadableDatabase();
-        Cursor cursor = db.query(DatabaseHelper.TABLE_VIDEOS, null,
-                DatabaseHelper.COL_VIDEO_ID + " = ?", new String[]{"hero_01"}, null, null, null);
-        if (cursor != null && cursor.moveToFirst()) {
-            Video v = cursorToVideo(cursor, true);
-            cursor.close();
-            return v;
-        }
-        if (cursor != null) cursor.close();
+        List<Video> videos = getPublicVideos(0);
+        return videos.isEmpty() ? null : getVideoById(videos.get(0).getId());
+    }
 
-        // Fallback to first video
-        List<Video> all = getAllVideos();
-        return all.isEmpty() ? null : all.get(0);
+    public List<Video> getPublicVideos(int sort) {
+        String order = sort == 2 ? "rating DESC" : sort == 1
+                ? "CAST(views AS INTEGER) DESC" : "published_at DESC, rowid DESC";
+        List<Video> result = new ArrayList<>();
+        try (Cursor c = dbHelper.getReadableDatabase().query("videos", null, "status = ?",
+                new String[]{"ACTIVE"}, null, null, order)) {
+            while (c.moveToNext()) result.add(cursorToVideo(c, false));
+        }
+        return result;
     }
 
     public List<Video> getTrendingVideos() {
@@ -215,8 +218,8 @@ public class DatabaseManager {
             do {
                 list.add(cursorToVideo(cursor, false));
             } while (cursor.moveToNext());
-            cursor.close();
         }
+        if (cursor != null) cursor.close();
         return list;
     }
 
@@ -231,8 +234,8 @@ public class DatabaseManager {
             do {
                 list.add(cursorToVideo(cursor, false));
             } while (cursor.moveToNext());
-            cursor.close();
         }
+        if (cursor != null) cursor.close();
         return list;
     }
 
@@ -243,8 +246,8 @@ public class DatabaseManager {
         Video video = null;
         if (cursor != null && cursor.moveToFirst()) {
             video = cursorToVideo(cursor, true);
-            cursor.close();
         }
+        if (cursor != null) cursor.close();
         return video;
     }
 
@@ -262,8 +265,8 @@ public class DatabaseManager {
             do {
                 list.add(cursorToVideo(cursor, false));
             } while (cursor.moveToNext());
-            cursor.close();
         }
+        if (cursor != null) cursor.close();
         return list;
     }
 
@@ -272,20 +275,22 @@ public class DatabaseManager {
         SQLiteDatabase db = dbHelper.getReadableDatabase();
         String wild = "%" + query + "%";
         Cursor cursor = db.query(DatabaseHelper.TABLE_VIDEOS, null,
-                "(" + DatabaseHelper.COL_VIDEO_TITLE + " LIKE ? OR " + DatabaseHelper.COL_VIDEO_CATEGORY + " LIKE ?)",
+                "status = 'ACTIVE' AND (" + DatabaseHelper.COL_VIDEO_TITLE + " LIKE ? OR " + DatabaseHelper.COL_VIDEO_CATEGORY + " LIKE ?)",
                 new String[]{wild, wild}, null, null, null);
 
         if (cursor != null && cursor.moveToFirst()) {
             do {
                 list.add(cursorToVideo(cursor, false));
             } while (cursor.moveToNext());
-            cursor.close();
         }
+        if (cursor != null) cursor.close();
         return list;
     }
 
     public boolean insertVideo(Video v) {
         SQLiteDatabase db = dbHelper.getWritableDatabase();
+        db.beginTransaction();
+        try {
         ContentValues cv = new ContentValues();
         cv.put(DatabaseHelper.COL_VIDEO_ID, v.getId());
         cv.put(DatabaseHelper.COL_VIDEO_TITLE, v.getTitle());
@@ -303,7 +308,8 @@ public class DatabaseManager {
         cv.put(DatabaseHelper.COL_VIDEO_STATUS, v.getStatus());
         cv.put(DatabaseHelper.COL_VIDEO_PUBLISHED, v.getPublishedAt());
 
-        long result = db.insertWithOnConflict(DatabaseHelper.TABLE_VIDEOS, null, cv, SQLiteDatabase.CONFLICT_REPLACE);
+        long result = db.insert(DatabaseHelper.TABLE_VIDEOS, null, cv);
+        if (result == -1) return false;
 
         if (v.getCategory() != null && !v.getCategory().trim().isEmpty()) {
             addCategory(v.getCategory().trim());
@@ -314,78 +320,35 @@ public class DatabaseManager {
             Episode ep = new Episode("ep_" + v.getId() + "_1", 1, "Tập 1: Mở đầu",
                     v.getDuration() != null ? v.getDuration() : "45:00",
                     v.getThumbnailUrl(), v.getVideoUrl(), v.getDescription());
-            insertEpisode(ep, v.getId());
+            if (!insertEpisode(ep, v.getId())) throw new android.database.SQLException("Cannot save episode");
         } else {
             for (Episode ep : v.getEpisodes()) {
-                insertEpisode(ep, v.getId());
+                if (!insertEpisode(ep, v.getId())) throw new android.database.SQLException("Cannot save episode");
             }
         }
 
-        return result != -1;
+        db.setTransactionSuccessful();
+        return true;
+        } finally { db.endTransaction(); }
     }
 
-    public void syncFromApi(List<Category> categories, List<Video> videos) {
+    public boolean updateVideoDetails(Video video) {
         SQLiteDatabase db = dbHelper.getWritableDatabase();
+        ContentValues cv = new ContentValues();
+        cv.put("title", video.getTitle()); cv.put("description", video.getDescription());
+        cv.put("video_url", video.getVideoUrl()); cv.put("thumbnail_url", video.getThumbnailUrl());
+        cv.put("category", video.getCategory()); cv.put("duration", video.getDuration());
         db.beginTransaction();
         try {
-            if (categories != null && !categories.isEmpty()) {
-                db.delete(DatabaseHelper.TABLE_CATEGORIES, null, null);
-                for (Category c : categories) {
-                    ContentValues cv = new ContentValues();
-                    cv.put(DatabaseHelper.COL_CAT_ID, c.getId());
-                    cv.put(DatabaseHelper.COL_CAT_NAME, c.getName());
-                    db.insertWithOnConflict(DatabaseHelper.TABLE_CATEGORIES, null, cv, SQLiteDatabase.CONFLICT_REPLACE);
-                }
-            }
-
-            if (videos != null && !videos.isEmpty()) {
-                for (Video v : videos) {
-                    ContentValues cv = new ContentValues();
-                    cv.put(DatabaseHelper.COL_VIDEO_ID, v.getId());
-                    cv.put(DatabaseHelper.COL_VIDEO_TITLE, v.getTitle());
-                    cv.put(DatabaseHelper.COL_VIDEO_DESC, v.getDescription());
-                    cv.put(DatabaseHelper.COL_VIDEO_URL, v.getVideoUrl());
-                    cv.put(DatabaseHelper.COL_VIDEO_THUMB, v.getThumbnailUrl());
-                    cv.put(DatabaseHelper.COL_VIDEO_DURATION, v.getDuration());
-                    cv.put(DatabaseHelper.COL_VIDEO_DURATION_MS, v.getDurationMs());
-                    cv.put(DatabaseHelper.COL_VIDEO_VIEWS, v.getViews());
-                    cv.put(DatabaseHelper.COL_VIDEO_RATING, v.getRating());
-                    cv.put(DatabaseHelper.COL_VIDEO_YEAR, v.getReleaseYear());
-                    cv.put(DatabaseHelper.COL_VIDEO_AGE, v.getAgeRating());
-                    cv.put(DatabaseHelper.COL_VIDEO_QUALITY, v.getQuality());
-                    cv.put(DatabaseHelper.COL_VIDEO_CATEGORY, v.getCategory());
-                    cv.put(DatabaseHelper.COL_VIDEO_STATUS, v.getStatus() != null ? v.getStatus() : "ACTIVE");
-                    cv.put(DatabaseHelper.COL_VIDEO_PUBLISHED, v.getPublishedAt());
-                    db.insertWithOnConflict(DatabaseHelper.TABLE_VIDEOS, null, cv, SQLiteDatabase.CONFLICT_REPLACE);
-
-                    if (v.getEpisodes() != null && !v.getEpisodes().isEmpty()) {
-                        for (Episode ep : v.getEpisodes()) {
-                            insertEpisode(ep, v.getId());
-                        }
-                    } else {
-                        Episode ep = new Episode("ep_" + v.getId() + "_1", 1, "Tập 1: Mở đầu",
-                                v.getDuration() != null ? v.getDuration() : "45:00",
-                                v.getThumbnailUrl(), v.getVideoUrl(), v.getDescription());
-                        insertEpisode(ep, v.getId());
-                    }
-
-                    if (v.getCastList() != null && !v.getCastList().isEmpty()) {
-                        for (CastMember cm : v.getCastList()) {
-                            ContentValues castCv = new ContentValues();
-                            castCv.put(DatabaseHelper.COL_CAST_ID, cm.getId());
-                            castCv.put(DatabaseHelper.COL_CAST_VIDEO_ID, v.getId());
-                            castCv.put(DatabaseHelper.COL_CAST_NAME, cm.getName());
-                            castCv.put(DatabaseHelper.COL_CAST_ROLE, cm.getRole());
-                            castCv.put(DatabaseHelper.COL_CAST_AVATAR, cm.getAvatarUrl());
-                            db.insertWithOnConflict(DatabaseHelper.TABLE_CAST, null, castCv, SQLiteDatabase.CONFLICT_REPLACE);
-                        }
-                    }
-                }
-            }
-            db.setTransactionSuccessful();
-        } finally {
-            db.endTransaction();
-        }
+            if (db.update("videos", cv, "id=?", new String[]{video.getId()}) == 0) return false;
+            // The automatically generated single episode follows the video's source.
+            ContentValues ep = new ContentValues(); ep.put("video_url", video.getVideoUrl());
+            ep.put("thumbnail_url", video.getThumbnailUrl()); ep.put("description", video.getDescription());
+            ep.put("duration", video.getDuration());
+            db.update("episodes", ep, "id=? AND video_id=?", new String[]{"ep_" + video.getId() + "_1", video.getId()});
+            addCategory(video.getCategory());
+            db.setTransactionSuccessful(); return true;
+        } finally { db.endTransaction(); }
     }
 
     public boolean updateVideoTitle(String videoId, String newTitle) {
@@ -419,8 +382,8 @@ public class DatabaseManager {
         int count = 0;
         if (cursor != null && cursor.moveToFirst()) {
             count = cursor.getInt(0);
-            cursor.close();
         }
+        if (cursor != null) cursor.close();
         return count;
     }
 
@@ -473,8 +436,8 @@ public class DatabaseManager {
                 ep.setDescription(cursor.getString(cursor.getColumnIndexOrThrow(DatabaseHelper.COL_EP_DESC)));
                 list.add(ep);
             } while (cursor.moveToNext());
-            cursor.close();
         }
+        if (cursor != null) cursor.close();
         return list;
     }
 
@@ -508,8 +471,8 @@ public class DatabaseManager {
                 cm.setAvatarUrl(cursor.getString(cursor.getColumnIndexOrThrow(DatabaseHelper.COL_CAST_AVATAR)));
                 list.add(cm);
             } while (cursor.moveToNext());
-            cursor.close();
         }
+        if (cursor != null) cursor.close();
         return list;
     }
 
@@ -520,7 +483,7 @@ public class DatabaseManager {
     public List<WatchHistory> getWatchHistories() {
         List<WatchHistory> list = new ArrayList<>();
         SQLiteDatabase db = dbHelper.getReadableDatabase();
-        Cursor cursor = db.query(DatabaseHelper.TABLE_HISTORY, null, null, null, null, null, DatabaseHelper.COL_HIST_UPDATED + " DESC");
+        Cursor cursor = db.query(DatabaseHelper.TABLE_HISTORY, null, "user_id = ?", new String[]{owner()}, null, null, DatabaseHelper.COL_HIST_UPDATED + " DESC");
 
         if (cursor != null && cursor.moveToFirst()) {
             do {
@@ -532,40 +495,40 @@ public class DatabaseManager {
                 h.setLastPositionMs(cursor.getLong(cursor.getColumnIndexOrThrow(DatabaseHelper.COL_HIST_LAST_POS)));
                 h.setTotalDurationMs(cursor.getLong(cursor.getColumnIndexOrThrow(DatabaseHelper.COL_HIST_TOTAL_DUR)));
                 h.setUpdatedAt(cursor.getString(cursor.getColumnIndexOrThrow(DatabaseHelper.COL_HIST_UPDATED)));
-                list.add(h);
+                if (h.getVideo() != null) list.add(h);
             } while (cursor.moveToNext());
-            cursor.close();
         }
+        if (cursor != null) cursor.close();
         return list;
     }
 
     public boolean saveOrUpdateHistory(String videoId, String episodeTitle, long lastPositionMs, long totalDurationMs) {
-        if (videoId == null || totalDurationMs <= 0) return false;
+        if (videoId == null || totalDurationMs <= 0 || getVideoById(videoId) == null) return false;
 
         SQLiteDatabase db = dbHelper.getWritableDatabase();
 
         // Check if history for this video exists
         String existingId = null;
         Cursor cursor = db.query(DatabaseHelper.TABLE_HISTORY, new String[]{DatabaseHelper.COL_HIST_ID},
-                DatabaseHelper.COL_HIST_VIDEO_ID + " = ?", new String[]{videoId}, null, null, null);
+                DatabaseHelper.COL_HIST_VIDEO_ID + " = ? AND user_id = ? AND episode_title = ?", new String[]{videoId, owner(), episodeTitle != null ? episodeTitle : "Tập 1"}, null, null, null);
         if (cursor != null && cursor.moveToFirst()) {
             existingId = cursor.getString(0);
-            cursor.close();
         }
         if (cursor != null) cursor.close();
 
         ContentValues cv = new ContentValues();
         cv.put(DatabaseHelper.COL_HIST_VIDEO_ID, videoId);
         cv.put(DatabaseHelper.COL_HIST_EP_TITLE, episodeTitle != null ? episodeTitle : "Tập 1");
-        cv.put(DatabaseHelper.COL_HIST_LAST_POS, lastPositionMs);
+        cv.put(DatabaseHelper.COL_HIST_LAST_POS, Math.max(0, Math.min(lastPositionMs, totalDurationMs)));
         cv.put(DatabaseHelper.COL_HIST_TOTAL_DUR, totalDurationMs);
-        cv.put(DatabaseHelper.COL_HIST_UPDATED, "Vừa xem");
+        cv.put(DatabaseHelper.COL_HIST_UPDATED, new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", java.util.Locale.US).format(new java.util.Date()));
+        cv.put("user_id", owner());
 
         if (existingId != null) {
             int rows = db.update(DatabaseHelper.TABLE_HISTORY, cv, DatabaseHelper.COL_HIST_ID + " = ?", new String[]{existingId});
             return rows > 0;
         } else {
-            cv.put(DatabaseHelper.COL_HIST_ID, "hist_" + System.currentTimeMillis());
+            cv.put(DatabaseHelper.COL_HIST_ID, "hist_" + java.util.UUID.randomUUID());
             long r = db.insert(DatabaseHelper.TABLE_HISTORY, null, cv);
             return r != -1;
         }
@@ -573,14 +536,81 @@ public class DatabaseManager {
 
     public boolean deleteHistory(String historyId) {
         SQLiteDatabase db = dbHelper.getWritableDatabase();
-        int rows = db.delete(DatabaseHelper.TABLE_HISTORY, DatabaseHelper.COL_HIST_ID + " = ?", new String[]{historyId});
+        int rows = db.delete(DatabaseHelper.TABLE_HISTORY, DatabaseHelper.COL_HIST_ID + " = ? AND user_id = ?", new String[]{historyId, owner()});
         return rows > 0;
     }
 
     public boolean clearAllHistory() {
         SQLiteDatabase db = dbHelper.getWritableDatabase();
-        int rows = db.delete(DatabaseHelper.TABLE_HISTORY, null, null);
+        int rows = db.delete(DatabaseHelper.TABLE_HISTORY, "user_id = ?", new String[]{owner()});
         return rows >= 0;
     }
-}
 
+    private String owner() {
+        com.nhom02.streamwire.utils.SessionManager session = new com.nhom02.streamwire.utils.SessionManager(context);
+        User user = session.getUser();
+        return session.isGuest() || user == null ? "guest" : user.getId();
+    }
+
+    public boolean isFavorite(String videoId) {
+        try (Cursor c = dbHelper.getReadableDatabase().rawQuery(
+                "SELECT 1 FROM favorites WHERE user_id=? AND video_id=?", new String[]{owner(), videoId})) {
+            return c.moveToFirst();
+        }
+    }
+
+    public boolean setFavorite(String videoId, boolean favorite) {
+        SQLiteDatabase db = dbHelper.getWritableDatabase();
+        if (!favorite) return db.delete("favorites", "user_id=? AND video_id=?", new String[]{owner(), videoId}) >= 0;
+        ContentValues cv = new ContentValues();
+        cv.put("user_id", owner()); cv.put("video_id", videoId);
+        return db.insertWithOnConflict("favorites", null, cv, SQLiteDatabase.CONFLICT_IGNORE) != -1;
+    }
+
+    public List<Video> getFavoriteVideos() {
+        List<Video> list = new ArrayList<>();
+        try (Cursor c = dbHelper.getReadableDatabase().rawQuery(
+                "SELECT v.* FROM videos v JOIN favorites f ON f.video_id=v.id WHERE f.user_id=? AND v.status='ACTIVE'", new String[]{owner()})) {
+            while (c.moveToNext()) list.add(cursorToVideo(c, false));
+        }
+        return list;
+    }
+
+    public android.net.Uri getDownloadedUri(String videoId) {
+        android.app.DownloadManager downloads = (android.app.DownloadManager) context.getSystemService(Context.DOWNLOAD_SERVICE);
+        try (Cursor c = dbHelper.getReadableDatabase().rawQuery("SELECT id FROM downloads WHERE user_id=? AND video_id=? ORDER BY id DESC", new String[]{owner(), videoId})) {
+            while (c.moveToNext()) {
+                android.net.Uri uri = downloads.getUriForDownloadedFile(c.getLong(0));
+                if (uri != null) return uri;
+            }
+        }
+        return null;
+    }
+
+    public void recordView(String videoId, long durationMs) {
+        dbHelper.getWritableDatabase().execSQL("UPDATE videos SET views=CAST(COALESCE(views,'0') AS INTEGER)+1, duration_ms=? WHERE id=?", new Object[]{durationMs, videoId});
+    }
+
+    public void saveDownload(long id, String videoId) {
+        ContentValues cv = new ContentValues();
+        cv.put("id", id); cv.put("user_id", owner()); cv.put("video_id", videoId);
+        dbHelper.getWritableDatabase().insertOrThrow("downloads", null, cv);
+    }
+
+    public String getSetting(String userId, String name, String fallback) {
+        try (Cursor c = dbHelper.getReadableDatabase().rawQuery("SELECT value FROM settings WHERE user_id=? AND name=?", new String[]{userId, name})) {
+            return c.moveToFirst() ? c.getString(0) : fallback;
+        }
+    }
+
+    public void setSetting(String userId, String name, String value) {
+        ContentValues cv = new ContentValues(); cv.put("user_id", userId); cv.put("name", name); cv.put("value", value);
+        dbHelper.getWritableDatabase().insertWithOnConflict("settings", null, cv, SQLiteDatabase.CONFLICT_REPLACE);
+    }
+
+    public User findUser(String login) {
+        try (Cursor c = dbHelper.getReadableDatabase().rawQuery("SELECT * FROM users WHERE email=? COLLATE NOCASE OR username=? OR id=?", new String[]{login, login, login})) {
+            return c.moveToFirst() ? cursorToUser(c) : null;
+        }
+    }
+}

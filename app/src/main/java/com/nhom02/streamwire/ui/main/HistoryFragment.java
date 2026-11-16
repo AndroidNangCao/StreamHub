@@ -56,6 +56,11 @@ public class HistoryFragment extends Fragment {
             public void onResumeWatch(WatchHistory history) {
                 Intent intent = new Intent(requireContext(), VideoPlayerActivity.class);
                 intent.putExtra("extra_video", history.getVideo());
+                if (history.getVideo() != null && history.getVideo().getEpisodes() != null) {
+                    for (com.nhom02.streamwire.model.Episode ep : history.getVideo().getEpisodes()) {
+                        if (ep.getTitle().equals(history.getEpisodeTitle())) { intent.putExtra("extra_episode", ep); break; }
+                    }
+                }
                 intent.putExtra("extra_last_position", history.getLastPositionMs());
                 startActivity(intent);
             }
@@ -118,6 +123,7 @@ public class HistoryFragment extends Fragment {
     }
 
     private void loadHistoryDataFromSQLite() {
+        if (binding == null || adapter == null) return;
         fullList = dbManager.getWatchHistories();
         adapter.setData(fullList);
         updateCount();

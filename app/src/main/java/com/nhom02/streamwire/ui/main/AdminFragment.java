@@ -49,6 +49,9 @@ public class AdminFragment extends Fragment {
         super.onViewCreated(view, savedInstanceState);
         dbManager = DatabaseManager.getInstance(requireContext());
 
+        if (!new com.nhom02.streamwire.utils.SessionManager(requireContext()).isAdmin()) {
+            binding.getRoot().setVisibility(View.GONE); return;
+        }
         setupVideoSection();
         setupUserSection();
         setupWarningBanner();
@@ -93,8 +96,7 @@ public class AdminFragment extends Fragment {
                         .setPositiveButton("Xóa", (dialog, which) -> {
                             // Xóa khỏi SQLite
                             dbManager.deleteVideo(video.getId());
-                            adminVideos.remove(position);
-                            videoAdapter.removeItem(position);
+                            loadAdminDataFromSQLite();
                             refreshStats();
                             Toast.makeText(requireContext(), "Đã xóa vĩnh viễn video khỏi SQLite", Toast.LENGTH_SHORT).show();
                         })
@@ -169,16 +171,11 @@ public class AdminFragment extends Fragment {
                     .setPositiveButton("Cấp quyền", (dialog, which) -> {
                         String target = input.getText().toString().trim();
                         if (!TextUtils.isEmpty(target)) {
-                            String email = target.contains("@") ? target : target + "@streamwire.com";
-                            // Thêm vào SQLite với vai trò ADMIN
-                            dbManager.registerUser("Admin " + target, email, "123456");
-                            User newAdmin = dbManager.authenticate(email, "123456");
-                            if (newAdmin != null) {
-                                dbManager.updateUserRole(newAdmin.getId(), "ADMIN");
-                                newAdmin.setRole("ADMIN");
-                            }
-                            loadAdminDataFromSQLite();
-                            Toast.makeText(requireContext(), "Đã tạo tài khoản Admin trong SQLite cho: " + target, Toast.LENGTH_SHORT).show();
+                            User user = dbManager.findUser(target);
+                            if (user != null && dbManager.updateUserRole(user.getId(), "ADMIN")) {
+                                loadAdminDataFromSQLite();
+                                Toast.makeText(requireContext(), "Đã cấp quyền quản trị", Toast.LENGTH_SHORT).show();
+                            } else Toast.makeText(requireContext(), "Không tìm thấy tài khoản", Toast.LENGTH_SHORT).show();
                         }
                     })
                     .show();
@@ -187,25 +184,44 @@ public class AdminFragment extends Fragment {
 
     private void setupWarningBanner() {
         binding.btnResolveReport.setOnClickListener(v -> {
-            new MaterialAlertDialogBuilder(requireContext())
-                    .setTitle("Xử lý 08 Báo Cáo Vi Phạm")
-                    .setMessage("1. Video vi phạm bản quyền âm thanh\n2. Bình luận spam quảng cáo\n3. Lỗi 404 video...")
-                    .setNegativeButton("Đóng", null)
-                    .setPositiveButton("Giải quyết tất cả", (dialog, which) -> {
-                        binding.cardReportWarning.setVisibility(View.GONE);
-                        Toast.makeText(requireContext(), "Đã xử lý xong các báo cáo vi phạm!", Toast.LENGTH_SHORT).show();
-                    })
-                    .show();
+            List<Video> reported = new ArrayList<>();
+            for (Video video : dbManager.getAllVideos()) if ("REPORTED".equals(video.getStatus())) reported.add(video);
+            String[] titles = new String[reported.size()];
+            for (int i = 0; i < titles.length; i++) titles[i] = reported.get(i).getTitle();
+            new MaterialAlertDialogBuilder(requireContext()).setTitle("Video bị báo cáo")
+                    .setItems(titles, (dialog, which) -> {
+                        dbManager.updateVideoStatus(reported.get(which).getId(), "PENDING");
+                        loadAdminDataFromSQLite();
+                    }).setNegativeButton("Đóng", null).show();
         });
+    }
+
+    private final androidx.activity.result.ActivityResultLauncher<String> exportCsv = registerForActivityResult(
+            new androidx.activity.result.contract.ActivityResultContracts.CreateDocument("text/csv"), uri -> {
+                if (uri == null) return;
+                try (java.io.OutputStream out = requireContext().getContentResolver().openOutputStream(uri);
+                     java.io.Writer writer = new java.io.OutputStreamWriter(out, java.nio.charset.StandardCharsets.UTF_8)) {
+                    writer.write("\ufeffid,title,category,status\r\n");
+                    for (Video video : dbManager.getAllVideos()) writer.write(csv(video.getId()) + "," + csv(video.getTitle()) + "," + csv(video.getCategory()) + "," + csv(video.getStatus()) + "\r\n");
+                    writer.flush();
+                    Toast.makeText(requireContext(), "Đã xuất CSV", Toast.LENGTH_SHORT).show();
+                } catch (java.io.IOException | RuntimeException e) {
+                    Toast.makeText(requireContext(), "Không thể xuất CSV", Toast.LENGTH_SHORT).show();
+                }
+            });
+
+    private static String csv(String value) {
+        String text = value == null ? "" : value;
+        if (text.matches("^[=+@-].*")) text = "'" + text;
+        return "\"" + text.replace("\"", "\"\"") + "\"";
     }
 
     private void setupAuditAndExport() {
-        binding.btnExportReportCsv.setOnClickListener(v -> {
-            Toast.makeText(requireContext(), "Đã xuất báo cáo cơ sở dữ liệu SQLite: StreamWire_Audit.csv", Toast.LENGTH_LONG).show();
-        });
+        binding.btnExportReportCsv.setOnClickListener(v -> exportCsv.launch("StreamWire_Videos.csv"));
     }
 
     private void loadAdminDataFromSQLite() {
+        if (binding == null || videoAdapter == null) return;
         refreshStats();
 
         adminVideos.clear();
@@ -218,6 +234,9 @@ public class AdminFragment extends Fragment {
     }
 
     private void refreshStats() {
+        boolean hasReports = false;
+        for (Video video : dbManager.getAllVideos()) if ("REPORTED".equals(video.getStatus())) hasReports = true;
+        binding.cardReportWarning.setVisibility(hasReports ? View.VISIBLE : View.GONE);
         int totalUsers = dbManager.getTotalUsersCount();
         int activeVideos = dbManager.getActiveVideosCount();
 
@@ -234,11 +253,15 @@ public class AdminFragment extends Fragment {
         List<Video> filtered = new ArrayList<>();
         for (Video v : adminVideos) {
             if (v.getTitle().toLowerCase().contains(query.toLowerCase())
-                    || v.getCategory().toLowerCase().contains(query.toLowerCase())) {
+                    || (v.getCategory() != null && v.getCategory().toLowerCase().contains(query.toLowerCase()))) {
                 filtered.add(v);
             }
         }
         videoAdapter.setData(filtered);
+    }
+
+    private View wrapEditor(View editor) {
+        android.widget.ScrollView scroll = new android.widget.ScrollView(requireContext()); scroll.addView(editor); return scroll;
     }
 
     private void showAddVideoDialog() {
@@ -259,23 +282,23 @@ public class AdminFragment extends Fragment {
         layout.addView(etDesc);
 
         EditText etVideoUrl = new EditText(requireContext());
-        etVideoUrl.setHint("Link video (.mp4) (Mặc định: W3C Sintel Full HD)");
-        etVideoUrl.setText("https://media.w3.org/2010/05/sintel/trailer.mp4");
+        etVideoUrl.setHint("Link video HTTP/HTTPS (*)");
+
         layout.addView(etVideoUrl);
 
         EditText etThumbUrl = new EditText(requireContext());
         etThumbUrl.setHint("Link ảnh bìa Thumbnail");
-        etThumbUrl.setText("https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=800&q=80");
+
         layout.addView(etThumbUrl);
 
         EditText etDuration = new EditText(requireContext());
         etDuration.setHint("Thời lượng (VD: 45:00)");
-        etDuration.setText("45:00");
+
         layout.addView(etDuration);
 
         new MaterialAlertDialogBuilder(requireContext())
                 .setTitle("➕ Thêm video mới vào Database SQLite")
-                .setView(layout)
+                .setView(wrapEditor(layout))
                 .setNegativeButton("Hủy", null)
                 .setPositiveButton("Lưu vào Database", (dialog, which) -> {
                     String title = etTitle.getText().toString().trim();
@@ -286,14 +309,12 @@ public class AdminFragment extends Fragment {
                     String duration = etDuration.getText().toString().trim();
 
                     if (!TextUtils.isEmpty(title)) {
-                        if (TextUtils.isEmpty(url)) {
-                            url = "https://media.w3.org/2010/05/sintel/trailer.mp4";
+                        if (!(url.startsWith("https://") || url.startsWith("http://"))) {
+                            Toast.makeText(requireContext(), "Nhập đường dẫn video HTTP/HTTPS", Toast.LENGTH_SHORT).show(); return;
                         }
-                        if (TextUtils.isEmpty(thumb)) {
-                            thumb = "https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=800&q=80";
-                        }
+
                         if (TextUtils.isEmpty(duration)) {
-                            duration = "45:00";
+                            duration = "00:00";
                         }
                         if (TextUtils.isEmpty(cat)) {
                             cat = "Hành Động";
@@ -304,15 +325,16 @@ public class AdminFragment extends Fragment {
 
                         Video newV = new Video("v_" + System.currentTimeMillis(),
                                 title, desc, url, thumb,
-                                duration, 45 * 60 * 1000L, "1 lượt xem", 9.5, 2026, "13+", "1080p",
-                                cat, "Vừa xong");
+                                duration, 0L, "0", 0, java.util.Calendar.getInstance().get(java.util.Calendar.YEAR), "", "Nguồn gốc",
+                                cat, new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", java.util.Locale.US).format(new java.util.Date()));
                         newV.setStatus("ACTIVE");
 
                         // Lưu vĩnh viễn vào SQLite
-                        dbManager.insertVideo(newV);
+                        if (!dbManager.insertVideo(newV)) {
+                            Toast.makeText(requireContext(), "Không thể lưu video", Toast.LENGTH_SHORT).show(); return;
+                        }
 
-                        adminVideos.add(0, newV);
-                        videoAdapter.notifyItemInserted(0);
+                        loadAdminDataFromSQLite();
                         binding.rvAdminVideos.scrollToPosition(0);
                         refreshStats();
 
@@ -325,25 +347,29 @@ public class AdminFragment extends Fragment {
     }
 
     private void showEditVideoDialog(Video video, int position) {
-        EditText input = new EditText(requireContext());
-        input.setText(video.getTitle());
-        input.setSelection(video.getTitle().length());
-
-        new MaterialAlertDialogBuilder(requireContext())
-                .setTitle("Chỉnh sửa tên video trong SQLite")
-                .setView(input)
-                .setNegativeButton("Hủy", null)
-                .setPositiveButton("Lưu", (dialog, which) -> {
-                    String newTitle = input.getText().toString().trim();
-                    if (!TextUtils.isEmpty(newTitle)) {
-                        // Cập nhật SQLite
-                        dbManager.updateVideoTitle(video.getId(), newTitle);
-                        video.setTitle(newTitle);
-                        videoAdapter.notifyItemChanged(position);
-                        Toast.makeText(requireContext(), "Đã lưu thay đổi vào SQLite!", Toast.LENGTH_SHORT).show();
-                    }
-                })
-                .show();
+        LinearLayout layout = new LinearLayout(requireContext());
+        layout.setOrientation(LinearLayout.VERTICAL); layout.setPadding(40, 20, 40, 20);
+        String[] labels = {"Tên video", "Thể loại", "Mô tả", "URL video", "URL ảnh bìa", "Thời lượng"};
+        String[] values = {video.getTitle(), video.getCategory(), video.getDescription(), video.getVideoUrl(), video.getThumbnailUrl(), video.getDuration()};
+        EditText[] fields = new EditText[values.length];
+        for (int i = 0; i < fields.length; i++) {
+            fields[i] = new EditText(requireContext()); fields[i].setHint(labels[i]); fields[i].setText(values[i]); layout.addView(fields[i]);
+        }
+        android.widget.ScrollView scroll = new android.widget.ScrollView(requireContext()); scroll.addView(layout);
+        androidx.appcompat.app.AlertDialog dialog = new MaterialAlertDialogBuilder(requireContext())
+                .setTitle("Chỉnh sửa video").setView(scroll).setNegativeButton("Hủy", null).setPositiveButton("Lưu", null).create();
+        dialog.setOnShowListener(ignored -> dialog.getButton(-1).setOnClickListener(view -> {
+            String title = fields[0].getText().toString().trim();
+            String url = fields[3].getText().toString().trim();
+            if (title.isEmpty()) { fields[0].setError("Nhập tên video"); return; }
+            if (!(url.startsWith("https://") || url.startsWith("http://"))) { fields[3].setError("Nhập URL HTTP/HTTPS"); return; }
+            video.setTitle(title); video.setCategory(fields[1].getText().toString().trim());
+            video.setDescription(fields[2].getText().toString().trim()); video.setVideoUrl(url);
+            video.setThumbnailUrl(fields[4].getText().toString().trim()); video.setDuration(fields[5].getText().toString().trim());
+            if (dbManager.updateVideoDetails(video)) { loadAdminDataFromSQLite(); dialog.dismiss(); }
+            else Toast.makeText(requireContext(), "Không thể lưu thay đổi", Toast.LENGTH_SHORT).show();
+        }));
+        dialog.show();
     }
 
     @Override

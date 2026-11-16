@@ -53,6 +53,9 @@ public class VideoDetailActivity extends AppCompatActivity {
             currentVideo = dbManager.getHeroVideo();
         }
 
+        if (currentVideo == null || !"ACTIVE".equals(currentVideo.getStatus())) {
+            Toast.makeText(this, "Video không còn khả dụng", Toast.LENGTH_SHORT).show(); finish(); return;
+        }
         setupToolbar();
         setupViews();
         setupCastRecyclerView();
@@ -68,11 +71,11 @@ public class VideoDetailActivity extends AppCompatActivity {
 
     private void setupViews() {
         binding.tvDetailTitle.setText(currentVideo.getTitle());
-        binding.tvRatingBadge.setText("★ " + currentVideo.getRating() + " Đề xuất");
+        binding.tvRatingBadge.setText(currentVideo.getRating() > 0 ? "★ " + currentVideo.getRating() : "Chưa có đánh giá");
         binding.tvYearBadge.setText(String.valueOf(currentVideo.getReleaseYear()));
         binding.tvAgeBadge.setText(currentVideo.getAgeRating() != null ? currentVideo.getAgeRating() : "16+");
-        binding.tvDurationBadge.setText(currentVideo.getDuration() != null ? currentVideo.getDuration() : "135 phút");
-        binding.tvQualityBadge.setText(currentVideo.getQuality() != null ? currentVideo.getQuality() : "4K HDR");
+        binding.tvDurationBadge.setText(currentVideo.getDuration() != null ? currentVideo.getDuration() : "Chưa xác định");
+        binding.tvQualityBadge.setText(currentVideo.getQuality() != null ? currentVideo.getQuality() : "Nguồn gốc");
         binding.tvCategoryTags.setText(currentVideo.getCategory());
         binding.tvDetailDescription.setText(currentVideo.getDescription());
 
@@ -120,15 +123,7 @@ public class VideoDetailActivity extends AppCompatActivity {
             episodeAdapter.setData(dbManager.getEpisodesByVideoId(currentVideo.getId()));
         }
 
-        binding.tvSeasonDropdown.setOnClickListener(v -> {
-            String[] seasons = {"Mùa 1 (2025)", "Mùa 2 (Sắp phát sóng)"};
-            new MaterialAlertDialogBuilder(this)
-                    .setTitle("Chọn mùa phim")
-                    .setItems(seasons, (dialog, which) -> {
-                        binding.tvSeasonDropdown.setText(seasons[which] + " ▼");
-                    })
-                    .show();
-        });
+        binding.tvSeasonDropdown.setText("Danh sách tập");
     }
 
     private void setupActionButtons() {
@@ -150,8 +145,12 @@ public class VideoDetailActivity extends AppCompatActivity {
             playVideo(ep, 0L);
         });
 
+        binding.btnAddWatchlist.setText(dbManager.isFavorite(currentVideo.getId()) ? "Bỏ yêu thích" : "Yêu thích");
         binding.btnAddWatchlist.setOnClickListener(v -> {
-            Toast.makeText(this, "Đã thêm vào Danh Sách Yêu Thích!", Toast.LENGTH_SHORT).show();
+            boolean favorite = !dbManager.isFavorite(currentVideo.getId());
+            if (dbManager.setFavorite(currentVideo.getId(), favorite)) {
+                binding.btnAddWatchlist.setText(favorite ? "Bỏ yêu thích" : "Yêu thích");
+            } else Toast.makeText(this, "Không thể lưu yêu thích", Toast.LENGTH_SHORT).show();
         });
 
         binding.btnActionShare.setOnClickListener(v -> shareVideo());
@@ -173,11 +172,26 @@ public class VideoDetailActivity extends AppCompatActivity {
         shareIntent.setType("text/plain");
         shareIntent.putExtra(Intent.EXTRA_SUBJECT, currentVideo.getTitle());
         shareIntent.putExtra(Intent.EXTRA_TEXT, "Đang xem phim siêu đỉnh trên StreamWire: "
-                + currentVideo.getTitle() + "\nhttps://streamwire.vn/watch/" + currentVideo.getId());
+                + currentVideo.getTitle() + "\n" + currentVideo.getVideoUrl());
         startActivity(Intent.createChooser(shareIntent, "Chia sẻ video qua"));
     }
 
     private void downloadVideo() {
-        Toast.makeText(this, "Đang tải video chất lượng 1080p về máy...", Toast.LENGTH_LONG).show();
+        String url = currentVideo.getVideoUrl();
+        if (url == null || !(url.startsWith("https://") || url.startsWith("http://"))) {
+            Toast.makeText(this, "Chỉ hỗ trợ tải đường dẫn HTTP/HTTPS", Toast.LENGTH_SHORT).show(); return;
+        }
+        try {
+            android.app.DownloadManager downloads = (android.app.DownloadManager) getSystemService(DOWNLOAD_SERVICE);
+            android.app.DownloadManager.Request request = new android.app.DownloadManager.Request(android.net.Uri.parse(url))
+                    .setTitle(currentVideo.getTitle())
+                    .setNotificationVisibility(new com.nhom02.streamwire.utils.SessionManager(this).isNotificationsEnabled() ? android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED : android.app.DownloadManager.Request.VISIBILITY_HIDDEN)
+                    .setDestinationInExternalFilesDir(this, android.os.Environment.DIRECTORY_MOVIES, currentVideo.getId() + "_" + System.currentTimeMillis() + ".mp4");
+            long id = downloads.enqueue(request);
+            dbManager.saveDownload(id, currentVideo.getId());
+            Toast.makeText(this, "Đã đưa video vào hàng đợi tải xuống", Toast.LENGTH_SHORT).show();
+        } catch (RuntimeException e) {
+            Toast.makeText(this, "Không thể bắt đầu tải video", Toast.LENGTH_SHORT).show();
+        }
     }
 }

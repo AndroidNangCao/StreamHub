@@ -55,7 +55,7 @@ public class LoginActivity extends AppCompatActivity {
         binding.tvForgotPassword.setOnClickListener(v -> {
             new MaterialAlertDialogBuilder(this)
                     .setTitle("Khôi phục mật khẩu")
-                    .setMessage("Tài khoản mặc định hệ thống:\n• Admin: admin@streamwire.com (Pass: 123456)\n• User: user@streamwire.com (Pass: 123456)")
+                    .setMessage("Dữ liệu được lưu trên thiết bị. Tài khoản đăng ký đầu tiên là quản trị viên. Nếu quên mật khẩu, hãy nhờ quản trị viên của thiết bị hỗ trợ.")
                     .setPositiveButton("Đã hiểu", null)
                     .show();
         });
@@ -94,7 +94,7 @@ public class LoginActivity extends AppCompatActivity {
             Toast.makeText(this, "Đăng nhập thành công! Vai trò: " + user.getRole(), Toast.LENGTH_SHORT).show();
             navigateToMain();
         } else {
-            Toast.makeText(this, "Sai tài khoản hoặc mật khẩu! (Gợi ý: 123456)", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "Sai tài khoản hoặc mật khẩu!", Toast.LENGTH_SHORT).show();
         }
     }
 
@@ -116,6 +116,9 @@ public class LoginActivity extends AppCompatActivity {
                 return;
             }
 
+            if (!android.util.Patterns.EMAIL_ADDRESS.matcher(email).matches()) {
+                dialogBinding.etRegEmail.setError("Email không hợp lệ"); return;
+            }
             if (password.length() < 6) {
                 Toast.makeText(this, "Mật khẩu phải từ 6 ký tự trở lên", Toast.LENGTH_SHORT).show();
                 return;

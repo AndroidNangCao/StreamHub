@@ -110,6 +110,12 @@ public class MainActivity extends AppCompatActivity implements SensorHelper.OnLi
     @Override
     protected void onResume() {
         super.onResume();
+        if (!sessionManager.isGuest() && sessionManager.getUser() == null) {
+            sessionManager.clearSession();
+            startActivity(new android.content.Intent(this, com.nhom02.streamwire.ui.auth.LoginActivity.class));
+            finish(); return;
+        }
+        binding.bottomNavigation.getMenu().findItem(R.id.nav_admin).setVisible(sessionManager.isAdmin());
         if (sessionManager.isLightSensorEnabled() && sensorHelper.hasLightSensor()) {
             sensorHelper.registerLightSensor();
         }

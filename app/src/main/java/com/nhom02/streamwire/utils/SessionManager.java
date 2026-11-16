@@ -22,10 +22,12 @@ public class SessionManager {
     private static final String KEY_NOTIFICATIONS = "notifications_enabled";
     private static final String KEY_DEFAULT_QUALITY = "default_quality";
 
+    private final com.nhom02.streamwire.db.DatabaseManager db;
     private final SharedPreferences prefs;
     private final SharedPreferences.Editor editor;
 
     public SessionManager(Context context) {
+        this.db = com.nhom02.streamwire.db.DatabaseManager.getInstance(context);
         this.prefs = context.getApplicationContext().getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE);
         this.editor = prefs.edit();
     }
@@ -57,12 +59,20 @@ public class SessionManager {
         user.setUsername(prefs.getString(KEY_USER_NAME, "Guest"));
         user.setFullName(prefs.getString(KEY_USER_FULLNAME, "Khách trải nghiệm"));
         user.setRole(prefs.getString(KEY_USER_ROLE, "USER"));
+        if (!isGuest()) {
+            User stored = db.findUser(user.getId());
+            return stored == null || stored.isLocked() ? null : stored;
+        }
         return user;
     }
 
     public void setGuestMode(boolean isGuest) {
         editor.putBoolean(KEY_IS_GUEST, isGuest);
         if (isGuest) {
+            editor.remove(KEY_TOKEN);
+            editor.remove(KEY_USER_ID);
+            editor.remove(KEY_USER_EMAIL);
+            editor.remove(KEY_USER_NAME);
             editor.putString(KEY_USER_ROLE, "USER");
             editor.putString(KEY_USER_FULLNAME, "Khách trải nghiệm");
         }
@@ -78,49 +88,51 @@ public class SessionManager {
     }
 
     public boolean isAdmin() {
-        String role = prefs.getString(KEY_USER_ROLE, "USER");
-        return "ADMIN".equalsIgnoreCase(role);
+        User user = getUser();
+        return !isGuest() && user != null && "ADMIN".equalsIgnoreCase(user.getRole());
     }
+
+    private String settingOwner() { return isGuest() ? "guest" : prefs.getString(KEY_USER_ID, "guest"); }
 
     // Sensor Toggles
     public boolean isLightSensorEnabled() {
-        return prefs.getBoolean(KEY_SENSOR_LIGHT, true);
+        return Boolean.parseBoolean(db.getSetting(settingOwner(), KEY_SENSOR_LIGHT, "true"));
     }
 
     public void setLightSensorEnabled(boolean enabled) {
-        editor.putBoolean(KEY_SENSOR_LIGHT, enabled).apply();
+        db.setSetting(settingOwner(), KEY_SENSOR_LIGHT, String.valueOf(enabled));
     }
 
     public boolean isShakeGestureEnabled() {
-        return prefs.getBoolean(KEY_SENSOR_SHAKE, true);
+        return Boolean.parseBoolean(db.getSetting(settingOwner(), KEY_SENSOR_SHAKE, "true"));
     }
 
     public void setShakeGestureEnabled(boolean enabled) {
-        editor.putBoolean(KEY_SENSOR_SHAKE, enabled).apply();
+        db.setSetting(settingOwner(), KEY_SENSOR_SHAKE, String.valueOf(enabled));
     }
 
     public boolean isSmartGesturesEnabled() {
-        return prefs.getBoolean(KEY_SMART_GESTURES, true);
+        return Boolean.parseBoolean(db.getSetting(settingOwner(), KEY_SMART_GESTURES, "true"));
     }
 
     public void setSmartGesturesEnabled(boolean enabled) {
-        editor.putBoolean(KEY_SMART_GESTURES, enabled).apply();
+        db.setSetting(settingOwner(), KEY_SMART_GESTURES, String.valueOf(enabled));
     }
 
     public boolean isNotificationsEnabled() {
-        return prefs.getBoolean(KEY_NOTIFICATIONS, true);
+        return Boolean.parseBoolean(db.getSetting(settingOwner(), KEY_NOTIFICATIONS, "true"));
     }
 
     public void setNotificationsEnabled(boolean enabled) {
-        editor.putBoolean(KEY_NOTIFICATIONS, enabled).apply();
+        db.setSetting(settingOwner(), KEY_NOTIFICATIONS, String.valueOf(enabled));
     }
 
     public String getDefaultQuality() {
-        return prefs.getString(KEY_DEFAULT_QUALITY, "1080p Full HD");
+        return db.getSetting(settingOwner(), KEY_DEFAULT_QUALITY, "Tự động (Auto)");
     }
 
     public void setDefaultQuality(String quality) {
-        editor.putString(KEY_DEFAULT_QUALITY, quality).apply();
+        db.setSetting(settingOwner(), KEY_DEFAULT_QUALITY, quality);
     }
 
     public void clearSession() {

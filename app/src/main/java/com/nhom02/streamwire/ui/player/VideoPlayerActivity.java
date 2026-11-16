@@ -59,7 +59,7 @@ public class VideoPlayerActivity extends AppCompatActivity implements SensorHelp
 
     private boolean isFullscreen = false;
     private boolean isMuted = false;
-    private boolean isFallbackAttempted = false;
+    private boolean viewRecorded = false;
     private boolean isUserSeeking = false;
 
     private final Handler progressHandler = new Handler(Looper.getMainLooper());
@@ -95,6 +95,7 @@ public class VideoPlayerActivity extends AppCompatActivity implements SensorHelp
         sensorHelper.setOnShakeListener(this);
 
         extractIntentData();
+        if (currentVideo == null) { finish(); return; }
         setupPlayer();
         setupCustomControls();
         setupTouchGestures();
@@ -135,6 +136,7 @@ public class VideoPlayerActivity extends AppCompatActivity implements SensorHelp
         }
     }
 
+    @androidx.annotation.OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)
     private void setupPlayer() {
         // Cấu hình HTTP DataSource có Browser User-Agent và timeout
         DefaultHttpDataSource.Factory httpFactory = new DefaultHttpDataSource.Factory()
@@ -150,12 +152,16 @@ public class VideoPlayerActivity extends AppCompatActivity implements SensorHelp
                 .build();
 
         binding.exoPlayerView.setPlayer(player);
+        String quality = sessionManager.getDefaultQuality();
+        int height = quality.startsWith("1080") ? 1080 : quality.startsWith("720") ? 720 : quality.startsWith("480") ? 480 : Integer.MAX_VALUE;
+        player.setTrackSelectionParameters(player.getTrackSelectionParameters().buildUpon().setMaxVideoSize(Integer.MAX_VALUE, height).build());
+        binding.customControls.btnPlayerQuality.setText(height == Integer.MAX_VALUE ? "Auto" : height + "p");
 
         String videoUrl = currentEpisode != null && currentEpisode.getVideoUrl() != null && !currentEpisode.getVideoUrl().isEmpty() ?
                 currentEpisode.getVideoUrl() : (currentVideo != null ? currentVideo.getVideoUrl() : "");
 
         if (videoUrl == null || videoUrl.isEmpty()) {
-            videoUrl = "https://media.w3.org/2010/05/sintel/trailer.mp4";
+            Toast.makeText(this, "Video chưa có nguồn phát", Toast.LENGTH_SHORT).show(); return;
         }
 
         playMediaUrl(videoUrl, startPositionMs);
@@ -168,6 +174,10 @@ public class VideoPlayerActivity extends AppCompatActivity implements SensorHelp
                 } else if (playbackState == Player.STATE_READY) {
                     binding.playerLoadingBar.setVisibility(View.GONE);
                     resetAutoHideTimer();
+                    if (!viewRecorded && currentVideo != null) {
+                        viewRecorded = true;
+                        dbManager.recordView(currentVideo.getId(), Math.max(0, player.getDuration()));
+                    }
                 } else if (playbackState == Player.STATE_ENDED) {
                     binding.playerLoadingBar.setVisibility(View.GONE);
                     showControls();
@@ -192,24 +202,8 @@ public class VideoPlayerActivity extends AppCompatActivity implements SensorHelp
                 Log.e(TAG, "ExoPlayer playback error: " + error.getMessage(), error);
                 binding.playerLoadingBar.setVisibility(View.GONE);
 
-                if (!isFallbackAttempted) {
-                    isFallbackAttempted = true;
-                    Toast.makeText(VideoPlayerActivity.this,
-                            "Nguồn video trực tuyến không phản hồi. Đang phát bản dự phòng offline...",
-                            Toast.LENGTH_LONG).show();
-
-                    // Phát video cục bộ tích hợp sẵn trong res/raw/sample_video.mp4
-                    Uri localUri = Uri.parse("android.resource://" + getPackageName() + "/" + R.raw.sample_video);
-                    MediaItem localItem = MediaItem.fromUri(localUri);
-                    player.setMediaItem(localItem);
-                    player.prepare();
-                    player.play();
-                } else {
-                    Toast.makeText(VideoPlayerActivity.this,
-                            "Không thể phát video: " + error.getErrorCodeName(),
-                            Toast.LENGTH_SHORT).show();
-                    showControls();
-                }
+                Toast.makeText(VideoPlayerActivity.this, "Không thể phát nguồn video: " + error.getErrorCodeName(), Toast.LENGTH_LONG).show();
+                showControls();
             }
         });
 
@@ -218,7 +212,8 @@ public class VideoPlayerActivity extends AppCompatActivity implements SensorHelp
 
     private void playMediaUrl(String url, long seekPositionMs) {
         if (player == null) return;
-        MediaItem mediaItem = MediaItem.fromUri(Uri.parse(url));
+        android.net.Uri downloaded = currentVideo != null && url.equals(currentVideo.getVideoUrl()) ? dbManager.getDownloadedUri(currentVideo.getId()) : null;
+        MediaItem mediaItem = MediaItem.fromUri(downloaded != null ? downloaded : Uri.parse(url));
         player.setMediaItem(mediaItem);
 
         if (seekPositionMs > 0) {
@@ -307,8 +302,13 @@ public class VideoPlayerActivity extends AppCompatActivity implements SensorHelp
             new MaterialAlertDialogBuilder(this)
                     .setTitle("Chất lượng video")
                     .setItems(qualities, (dialog, which) -> {
+                        if (player == null) return;
+                        int[] heights = {1080, 720, 480, Integer.MAX_VALUE};
+                        player.setTrackSelectionParameters(player.getTrackSelectionParameters().buildUpon()
+                                .setMaxVideoSize(Integer.MAX_VALUE, heights[which]).build());
+                        sessionManager.setDefaultQuality(qualities[which]);
                         binding.customControls.btnPlayerQuality.setText(qualities[which].split(" ")[0]);
-                        Toast.makeText(this, "Đã chuyển sang chất lượng: " + qualities[which], Toast.LENGTH_SHORT).show();
+                        Toast.makeText(this, "Đã đặt giới hạn chất lượng (tùy nguồn): " + qualities[which], Toast.LENGTH_SHORT).show();
                     })
                     .show();
         });
@@ -428,14 +428,13 @@ public class VideoPlayerActivity extends AppCompatActivity implements SensorHelp
     }
 
     private void changeEpisode(Episode episode) {
-        this.currentEpisode = episode;
-        this.isFallbackAttempted = false;
         saveCurrentProgressToSQLite();
-
         String url = episode.getVideoUrl();
         if (url == null || url.isEmpty()) {
-            url = "https://media.w3.org/2010/05/sintel/trailer.mp4";
+            Toast.makeText(this, "Tập chưa có nguồn phát", Toast.LENGTH_SHORT).show(); return;
         }
+        this.currentEpisode = episode;
+        viewRecorded = false;
         playMediaUrl(url, 0L);
 
         binding.customControls.tvPlayerTopTitle.setText(currentVideo.getTitle() + " - " + episode.getTitle());

@@ -75,7 +75,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="4dp"
-                        android:text="12.450"
+                        android:text="0"
                         android:textColor="@color/text_primary"
                         android:textSize="20sp"
                         android:textStyle="bold" />
@@ -84,7 +84,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="2dp"
-                        android:text="+5.2% tuần này"
+                        android:text="Tài khoản trên thiết bị"
                         android:textColor="@color/accent_green"
                         android:textSize="10sp" />
                 </LinearLayout>
@@ -117,7 +117,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="4dp"
-                        android:text="1.820"
+                        android:text="0"
                         android:textColor="@color/text_primary"
                         android:textSize="20sp"
                         android:textStyle="bold" />
@@ -126,7 +126,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="2dp"
-                        android:text="+12 video mới"
+                        android:text="Video công khai trên thiết bị"
                         android:textColor="@color/accent_green"
                         android:textSize="10sp" />
                 </LinearLayout>
@@ -174,7 +174,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="2dp"
-                        android:text="08 sự cố cần xử lý gấp từ người xem"
+                        android:text="Video đang có trạng thái bị báo cáo"
                         android:textColor="#EEEEEE"
                         android:textSize="11sp" />
                 </LinearLayout>
@@ -320,7 +320,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Nhật ký kiểm duyệt hệ thống"
+                    android:text="Xuất thư viện video"
                     android:textColor="@color/text_primary"
                     android:textSize="13sp"
                     android:textStyle="bold" />
@@ -329,7 +329,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="2dp"
-                    android:text="Cập nhật 2 phút trước bởi Admin boss (ID: 01)"
+                    android:text="Xuất dữ liệu hiện tại từ SQLite"
                     android:textColor="@color/text_secondary"
                     android:textSize="11sp" />
 
