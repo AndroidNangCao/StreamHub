@@ -25,4 +25,10 @@ public class AuthErrorMessageTest {
         assertTrue(AuthErrorMessage.describe("NETWORK_REQUEST_FAILED", "", "AUTH", false).contains("Internet"));
         assertTrue(AuthErrorMessage.describe("ERROR_INVALID_CREDENTIAL", "", "AUTH", false).contains("Email hoặc mật khẩu"));
     }
+    @Test public void unavailableProfileIncludesFirestoreSetupRatherThanOnlyNetworkAdvice() {
+        String message = AuthErrorMessage.describe("UNAVAILABLE", "Failed to get document because the client is offline", "READ_PROFILE", true);
+        assertTrue(message.contains("Cloud Firestore API"));
+        assertTrue(message.contains("(default)"));
+        assertTrue(message.contains("không cần đăng ký lại"));
+    }
 }
