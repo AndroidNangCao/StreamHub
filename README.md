@@ -1,12 +1,18 @@
-# StreamWire — Android / SQLite
+# StreamWire — Android / SQLite / Firebase
 
-Ứng dụng Android Java, minSdk 26, dùng SQLite cục bộ (`streamwire.db`, schema 3).
+Ứng dụng Android Java, minSdk 26, dùng SQLite cục bộ (`streamwire.db`, schema 4).
+
+## Đồng bộ Firebase
+
+Đã tích hợp Firebase Authentication, Firestore và hàng đợi SQLite. Khi mất mạng, dữ liệu vẫn lưu trên thiết bị; khi có mạng, WorkManager gửi các thay đổi và tải cache mới. Chưa điền cấu hình thì ứng dụng tiếp tục chạy chế độ cục bộ.
+
+Xem [FIREBASE_SETUP.md](FIREBASE_SETUP.md) để nối project Firebase, cấp ADMIN, publish Rules và demo offline/online. Không cần Backend Java riêng.
 
 ## Chạy dự án
 
 1. Mở bằng Android Studio, cấu hình Android SDK 34 và Gradle JDK 21 theo cấu hình wrapper của dự án.
 2. Sync Gradle rồi chạy module `app` trên máy Android hoặc giả lập.
-3. Đăng ký tài khoản đầu tiên: tài khoản này tự nhận quyền ADMIN. Những tài khoản sau nhận quyền USER. Bản cài mới không chứa phim, tài khoản hay lịch sử giả.
+3. Chưa cấu hình Firebase: tài khoản SQLite đầu tiên nhận ADMIN. Đã cấu hình Firebase: tài khoản mới nhận USER; cấp ADMIN đầu tiên qua Firestore Console như hướng dẫn. Bản cài mới không chứa phim, tài khoản hay lịch sử giả.
 4. Vào **Quản trị → Thêm mới**, nhập tên và URL video HTTP/HTTPS thực tế. Nên dùng URL MP4 trực tiếp; URL trang web xem phim không phải nguồn phát video.
 5. Trở về Trang chủ để xem, tìm kiếm, lọc, thêm yêu thích hoặc tải xuống. Danh sách yêu thích nằm trong nút bộ lọc Trang chủ.
 
@@ -14,7 +20,7 @@
 
 - SQLite lưu tài khoản, mật khẩu PBKDF2 có salt, danh mục, video, tập phim, diễn viên, lịch sử, yêu thích, cài đặt và mã tải xuống.
 - Lịch sử, yêu thích, cài đặt và mã tải được tách theo tài khoản. Chế độ khách dùng dữ liệu riêng mang khóa `guest`.
-- SharedPreferences giữ thông tin phiên đăng nhập trên thiết bị. Không có JWT hoặc máy chủ xác thực.
+- Firebase SDK quản lý phiên xác thực khi đã cấu hình Cloud. SharedPreferences giữ lựa chọn phiên cục bộ; không lưu mật khẩu Firebase.
 - Android DownloadManager tải file vào thư mục Movies riêng của ứng dụng; SQLite lưu metadata. Trình phát ưu tiên bản đã tải thành công cho cùng URL video. File video không được nhét vào SQLite.
 - Xuất CSV mở trình chọn nơi lưu và xuất danh sách video hiện tại, không chứa mật khẩu.
 - Nâng cấp schema 2 → 3 giữ nguyên tài khoản và video cũ. Dữ liệu mẫu đã tồn tại từ bản cài cũ không bị tự xóa. Lịch sử cũ không xác định chủ sở hữu được giữ với khóa `legacy`, không gán cho tài khoản bất kỳ.

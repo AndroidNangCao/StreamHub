@@ -80,13 +80,13 @@ public class DatabaseManager {
         cv.put(DatabaseHelper.COL_USER_AVATAR, "");
 
         long result = db.insert(DatabaseHelper.TABLE_USERS, null, cv);
-        return result != -1;
+        return synced(result != -1);
     }
 
     public List<User> getAllUsers() {
         List<User> list = new ArrayList<>();
         SQLiteDatabase db = dbHelper.getReadableDatabase();
-        Cursor cursor = db.query(DatabaseHelper.TABLE_USERS, null, null, null, null, null, DatabaseHelper.COL_USER_FULL_NAME + " ASC");
+        Cursor cursor = db.query(DatabaseHelper.TABLE_USERS, null, com.nhom02.streamwire.cloud.FirebaseRuntime.configured(context) ? "(password IS NULL OR password='')" : null, null, null, null, DatabaseHelper.COL_USER_FULL_NAME + " ASC");
         if (cursor != null && cursor.moveToFirst()) {
             do {
                 list.add(cursorToUser(cursor));
@@ -97,19 +97,25 @@ public class DatabaseManager {
     }
 
     public boolean updateUserRole(String userId, String newRole) {
+        if (!allowCloudTarget(userId)) return false;
+        if (com.nhom02.streamwire.cloud.FirebaseRuntime.configured(context) && userId.equals(owner())) return false;
+        if (!allowAdminWrite()) return false;
         SQLiteDatabase db = dbHelper.getWritableDatabase();
         ContentValues cv = new ContentValues();
         cv.put(DatabaseHelper.COL_USER_ROLE, newRole);
         int rows = db.update(DatabaseHelper.TABLE_USERS, cv, DatabaseHelper.COL_USER_ID + " = ?", new String[]{userId});
-        return rows > 0;
+        return synced(rows > 0);
     }
 
     public boolean toggleUserLock(String userId, boolean isLocked) {
+        if (!allowCloudTarget(userId)) return false;
+        if (com.nhom02.streamwire.cloud.FirebaseRuntime.configured(context) && userId.equals(owner())) return false;
+        if (!allowAdminWrite()) return false;
         SQLiteDatabase db = dbHelper.getWritableDatabase();
         ContentValues cv = new ContentValues();
         cv.put(DatabaseHelper.COL_USER_IS_LOCKED, isLocked ? 1 : 0);
         int rows = db.update(DatabaseHelper.TABLE_USERS, cv, DatabaseHelper.COL_USER_ID + " = ?", new String[]{userId});
-        return rows > 0;
+        return synced(rows > 0);
     }
 
     public boolean updatePassword(String userId, String newPassword) {
@@ -117,7 +123,7 @@ public class DatabaseManager {
         ContentValues cv = new ContentValues();
         cv.put(DatabaseHelper.COL_USER_PASSWORD, com.nhom02.streamwire.utils.PasswordHasher.hash(newPassword));
         int rows = db.update(DatabaseHelper.TABLE_USERS, cv, DatabaseHelper.COL_USER_ID + " = ?", new String[]{userId});
-        return rows > 0;
+        return synced(rows > 0);
     }
 
     public int getTotalUsersCount() {
@@ -288,6 +294,7 @@ public class DatabaseManager {
     }
 
     public boolean insertVideo(Video v) {
+        if (!allowAdminWrite()) return false;
         SQLiteDatabase db = dbHelper.getWritableDatabase();
         db.beginTransaction();
         try {
@@ -328,11 +335,12 @@ public class DatabaseManager {
         }
 
         db.setTransactionSuccessful();
-        return true;
+        return synced(true);
         } finally { db.endTransaction(); }
     }
 
     public boolean updateVideoDetails(Video video) {
+        if (!allowAdminWrite()) return false;
         SQLiteDatabase db = dbHelper.getWritableDatabase();
         ContentValues cv = new ContentValues();
         cv.put("title", video.getTitle()); cv.put("description", video.getDescription());
@@ -347,33 +355,36 @@ public class DatabaseManager {
             ep.put("duration", video.getDuration());
             db.update("episodes", ep, "id=? AND video_id=?", new String[]{"ep_" + video.getId() + "_1", video.getId()});
             addCategory(video.getCategory());
-            db.setTransactionSuccessful(); return true;
+            db.setTransactionSuccessful(); return synced(true);
         } finally { db.endTransaction(); }
     }
 
     public boolean updateVideoTitle(String videoId, String newTitle) {
+        if (!allowAdminWrite()) return false;
         SQLiteDatabase db = dbHelper.getWritableDatabase();
         ContentValues cv = new ContentValues();
         cv.put(DatabaseHelper.COL_VIDEO_TITLE, newTitle);
         int rows = db.update(DatabaseHelper.TABLE_VIDEOS, cv, DatabaseHelper.COL_VIDEO_ID + " = ?", new String[]{videoId});
-        return rows > 0;
+        return synced(rows > 0);
     }
 
     public boolean updateVideoStatus(String videoId, String newStatus) {
+        if (!allowAdminWrite()) return false;
         SQLiteDatabase db = dbHelper.getWritableDatabase();
         ContentValues cv = new ContentValues();
         cv.put(DatabaseHelper.COL_VIDEO_STATUS, newStatus);
         int rows = db.update(DatabaseHelper.TABLE_VIDEOS, cv, DatabaseHelper.COL_VIDEO_ID + " = ?", new String[]{videoId});
-        return rows > 0;
+        return synced(rows > 0);
     }
 
     public boolean deleteVideo(String videoId) {
+        if (!allowAdminWrite()) return false;
         SQLiteDatabase db = dbHelper.getWritableDatabase();
         db.delete(DatabaseHelper.TABLE_EPISODES, DatabaseHelper.COL_EP_VIDEO_ID + " = ?", new String[]{videoId});
         db.delete(DatabaseHelper.TABLE_CAST, DatabaseHelper.COL_CAST_VIDEO_ID + " = ?", new String[]{videoId});
         db.delete(DatabaseHelper.TABLE_HISTORY, DatabaseHelper.COL_HIST_VIDEO_ID + " = ?", new String[]{videoId});
         int rows = db.delete(DatabaseHelper.TABLE_VIDEOS, DatabaseHelper.COL_VIDEO_ID + " = ?", new String[]{videoId});
-        return rows > 0;
+        return synced(rows > 0);
     }
 
     public int getActiveVideosCount() {
@@ -453,7 +464,7 @@ public class DatabaseManager {
         cv.put(DatabaseHelper.COL_EP_URL, ep.getVideoUrl());
         cv.put(DatabaseHelper.COL_EP_DESC, ep.getDescription());
         long r = db.insertWithOnConflict(DatabaseHelper.TABLE_EPISODES, null, cv, SQLiteDatabase.CONFLICT_REPLACE);
-        return r != -1;
+        return synced(r != -1);
     }
 
     public List<CastMember> getCastByVideoId(String videoId) {
@@ -526,24 +537,24 @@ public class DatabaseManager {
 
         if (existingId != null) {
             int rows = db.update(DatabaseHelper.TABLE_HISTORY, cv, DatabaseHelper.COL_HIST_ID + " = ?", new String[]{existingId});
-            return rows > 0;
+            return synced(rows > 0);
         } else {
-            cv.put(DatabaseHelper.COL_HIST_ID, "hist_" + java.util.UUID.randomUUID());
+            cv.put(DatabaseHelper.COL_HIST_ID, "hist_" + java.util.UUID.nameUUIDFromBytes((owner() + "\n" + videoId + "\n" + episodeTitle).getBytes(java.nio.charset.StandardCharsets.UTF_8)));
             long r = db.insert(DatabaseHelper.TABLE_HISTORY, null, cv);
-            return r != -1;
+            return synced(r != -1);
         }
     }
 
     public boolean deleteHistory(String historyId) {
         SQLiteDatabase db = dbHelper.getWritableDatabase();
         int rows = db.delete(DatabaseHelper.TABLE_HISTORY, DatabaseHelper.COL_HIST_ID + " = ? AND user_id = ?", new String[]{historyId, owner()});
-        return rows > 0;
+        return synced(rows > 0);
     }
 
     public boolean clearAllHistory() {
         SQLiteDatabase db = dbHelper.getWritableDatabase();
         int rows = db.delete(DatabaseHelper.TABLE_HISTORY, "user_id = ?", new String[]{owner()});
-        return rows >= 0;
+        return synced(rows >= 0);
     }
 
     private String owner() {
@@ -561,10 +572,10 @@ public class DatabaseManager {
 
     public boolean setFavorite(String videoId, boolean favorite) {
         SQLiteDatabase db = dbHelper.getWritableDatabase();
-        if (!favorite) return db.delete("favorites", "user_id=? AND video_id=?", new String[]{owner(), videoId}) >= 0;
+        if (!favorite) return synced(db.delete("favorites", "user_id=? AND video_id=?", new String[]{owner(), videoId}) >= 0);
         ContentValues cv = new ContentValues();
         cv.put("user_id", owner()); cv.put("video_id", videoId);
-        return db.insertWithOnConflict("favorites", null, cv, SQLiteDatabase.CONFLICT_IGNORE) != -1;
+        return synced(db.insertWithOnConflict("favorites", null, cv, SQLiteDatabase.CONFLICT_IGNORE) != -1);
     }
 
     public List<Video> getFavoriteVideos() {
@@ -606,11 +617,25 @@ public class DatabaseManager {
     public void setSetting(String userId, String name, String value) {
         ContentValues cv = new ContentValues(); cv.put("user_id", userId); cv.put("name", name); cv.put("value", value);
         dbHelper.getWritableDatabase().insertWithOnConflict("settings", null, cv, SQLiteDatabase.CONFLICT_REPLACE);
+        synced(true);
     }
 
     public User findUser(String login) {
         try (Cursor c = dbHelper.getReadableDatabase().rawQuery("SELECT * FROM users WHERE email=? COLLATE NOCASE OR username=? OR id=?", new String[]{login, login, login})) {
             return c.moveToFirst() ? cursorToUser(c) : null;
+        }
+    }
+    private boolean synced(boolean success) {
+        if (success) com.nhom02.streamwire.cloud.SyncScheduler.request(context);
+        return success;
+    }
+    private boolean allowAdminWrite() {
+        return !com.nhom02.streamwire.cloud.FirebaseRuntime.configured(context) || new com.nhom02.streamwire.utils.SessionManager(context).isAdmin();
+    }
+    private boolean allowCloudTarget(String userId) {
+        if (!com.nhom02.streamwire.cloud.FirebaseRuntime.configured(context)) return true;
+        try (Cursor cursor = dbHelper.getReadableDatabase().rawQuery("SELECT 1 FROM users WHERE id=? AND (password IS NULL OR password='')", new String[]{userId})) {
+            return cursor.moveToFirst();
         }
     }
 }

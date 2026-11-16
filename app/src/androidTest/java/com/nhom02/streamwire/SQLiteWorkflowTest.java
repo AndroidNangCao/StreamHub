@@ -41,6 +41,9 @@ public class SQLiteWorkflowTest {
         session.clearSession();
         SQLiteDatabase db = helper.getWritableDatabase();
         for (String table : new String[]{"favorites", "downloads", "watch_history", "cast_members", "episodes", "videos", "categories", "settings", "users"}) db.delete(table, null, null);
+        db.delete("sync_outbox", null, null);
+        db.delete("sync_known_videos", null, null);
+        db.delete("sync_state", null, null);
     }
 
     private Video video(String id, String status) {
@@ -130,5 +133,117 @@ public class SQLiteWorkflowTest {
             InstrumentationRegistry.getInstrumentation().waitForIdleSync();
             screen.onActivity(activity -> assertNotNull(activity.findViewById(R.id.etSearchAdminVideo)));
         } finally { runtimeSession.clearSession(); }
+    }
+
+    @Test public void outboxSurvivesReopenAndOldAcknowledgementCannotLoseNewEdit() {
+        User user = login("queue@test.local");
+        assertTrue(manager.insertVideo(video("queued", "ACTIVE")));
+        com.nhom02.streamwire.cloud.SyncStore store = new com.nhom02.streamwire.cloud.SyncStore(context);
+        for (com.nhom02.streamwire.cloud.SyncStore.Change change : store.pending(user.getId())) store.acknowledge(change);
+        assertTrue(manager.setFavorite("queued", true));
+        com.nhom02.streamwire.cloud.SyncStore.Change old = store.pending(user.getId()).get(0);
+        helper.close();
+        assertEquals(1, store.pendingCount(user.getId()));
+        assertTrue(manager.setFavorite("queued", false));
+        store.acknowledge(old);
+        assertEquals(1, store.pendingCount(user.getId()));
+        assertTrue(store.pending(user.getId()).get(0).deleted);
+        store.acknowledge(store.pending(user.getId()).get(0));
+        assertEquals(0, store.pendingCount(user.getId()));
+    }
+
+    @Test public void cloudPullDoesNotOverwritePendingEditOrEchoBack() {
+        User user = login("merge@test.local");
+        assertTrue(manager.insertVideo(video("merge", "ACTIVE")));
+        com.nhom02.streamwire.cloud.SyncStore store = new com.nhom02.streamwire.cloud.SyncStore(context);
+        for (com.nhom02.streamwire.cloud.SyncStore.Change change : store.pending(user.getId())) store.acknowledge(change);
+        assertTrue(manager.setFavorite("merge", true));
+        java.util.Map<String,Object> tombstone = new java.util.HashMap<>(); tombstone.put("_deleted", true);
+        store.importRecord(user.getId(), "favorite", "merge", tombstone);
+        assertTrue(manager.isFavorite("merge"));
+        store.acknowledge(store.pending(user.getId()).get(0));
+        store.importRecord(user.getId(), "favorite", "merge", tombstone);
+        assertFalse(manager.isFavorite("merge"));
+        assertEquals(0, store.pendingCount(user.getId()));
+        try (Cursor c = helper.getReadableDatabase().rawQuery("SELECT importing FROM sync_context", null)) {
+            assertTrue(c.moveToFirst()); assertEquals(0, c.getInt(0));
+        }
+    }
+
+    @Test public void outboxNeverContainsPasswordsAndIsScopedByAccount() {
+        User first = login("private@test.local");
+        manager.insertVideo(video("private", "ACTIVE"));
+        manager.saveOrUpdateHistory("private", "Episode 1", 100, 1000);
+        com.nhom02.streamwire.cloud.SyncStore store = new com.nhom02.streamwire.cloud.SyncStore(context);
+        for (com.nhom02.streamwire.cloud.SyncStore.Change change : store.pending(first.getId())) assertFalse(change.data.containsKey("password"));
+        User second = login("other@test.local");
+        assertEquals(0, store.pendingCount(second.getId()));
+        assertTrue(store.pendingCount(first.getId()) > 0);
+        session.setGuestMode(true);
+        manager.setFavorite("private", true);
+        assertEquals(0, store.pendingCount("guest"));
+    }
+
+    @Test public void schemaThreeUpgradesWithoutDroppingData() {
+        try (SQLiteDatabase old = SQLiteDatabase.create(null)) {
+            helper.onCreate(old);
+            java.util.List<String> triggers = new java.util.ArrayList<>();
+            try (Cursor c = old.rawQuery("SELECT name FROM sqlite_master WHERE type='trigger'", null)) { while(c.moveToNext()) triggers.add(c.getString(0)); }
+            for(String trigger : triggers) old.execSQL("DROP TRIGGER " + trigger);
+            for(String name : new String[]{"sync_context","sync_outbox","sync_state","sync_known_videos"}) old.execSQL("DROP TABLE " + name);
+            old.execSQL("INSERT INTO videos(id,title,status) VALUES('existing','Existing video','ACTIVE')");
+            helper.onUpgrade(old,3,4);
+            try(Cursor c=old.rawQuery("SELECT title FROM videos WHERE id='existing'",null)) { assertTrue(c.moveToFirst()); assertEquals("Existing video",c.getString(0)); }
+            old.execSQL("UPDATE sync_context SET uid='firebase-user'");
+            old.execSQL("INSERT INTO favorites(user_id,video_id) VALUES('firebase-user','existing')");
+            try(Cursor c=old.rawQuery("SELECT entity FROM sync_outbox",null)) { assertTrue(c.moveToFirst()); assertEquals("favorite",c.getString(0)); }
+        }
+    }
+
+    @Test public void verifiedFirebaseIdentityMigratesPersonalDataWithoutCopyingLocalAdminOrPassword() {
+        User legacy = login("migrate@test.local");
+        manager.insertVideo(video("migrate", "ACTIVE"));
+        manager.saveOrUpdateHistory("migrate", "Episode 1", 100, 1000);
+        manager.setFavorite("migrate", true);
+        session.setDefaultQuality("720p HD");
+        User firebase = new User("firebase-user", legacy.getEmail(), "cloud-user", "Cloud user", "USER", false);
+        com.nhom02.streamwire.cloud.SyncStore store = new com.nhom02.streamwire.cloud.SyncStore(context);
+        store.cacheUser(firebase, true);
+        session.saveUser(firebase);
+        assertFalse(session.isAdmin());
+        assertTrue(manager.isFavorite("migrate"));
+        assertEquals(1, manager.getWatchHistories().size());
+        assertEquals("720p HD", session.getDefaultQuality());
+        try(Cursor c = helper.getReadableDatabase().rawQuery("SELECT password FROM users WHERE id=?", new String[]{firebase.getId()})) {
+            assertTrue(c.moveToFirst()); assertEquals("", c.getString(0));
+        }
+        assertEquals(3, store.pendingCount(firebase.getId()));
+        for(com.nhom02.streamwire.cloud.SyncStore.Change change : store.pending(firebase.getId())) {
+            assertFalse(change.data.containsKey("password")); assertFalse("profile".equals(change.entity));
+        }
+    }
+
+    @Test public void serverVerifiedAdminCanAdoptLegacyVideoEditsAndTombstonesOnce() {
+        User legacy = login("publisher@test.local");
+        // Older installations used IDs such as u_admin rather than UUID-based IDs.
+        helper.getWritableDatabase().execSQL("UPDATE users SET id='u_admin' WHERE id=?", new Object[]{legacy.getId()});
+        legacy.setId("u_admin");
+        session.saveUser(legacy);
+        manager.insertVideo(video("publish", "ACTIVE"));
+        manager.insertVideo(video("deleted", "ACTIVE"));
+        manager.deleteVideo("deleted");
+        com.nhom02.streamwire.cloud.SyncStore store = new com.nhom02.streamwire.cloud.SyncStore(context);
+        store.enqueueUnpublishedVideos("cloud-admin");
+        assertEquals(0, store.pendingCount(legacy.getId()));
+        assertEquals(2, store.pendingCount("cloud-admin"));
+        boolean sawDeletion = false;
+        for(com.nhom02.streamwire.cloud.SyncStore.Change change : store.pending("cloud-admin")) {
+            if("deleted".equals(change.id)) { assertTrue(change.deleted); sawDeletion = true; }
+            if("publish".equals(change.id)) assertTrue(change.data.get("episodes") instanceof java.util.List);
+            store.acknowledge(change);
+        }
+        assertTrue(sawDeletion);
+        store.enqueueUnpublishedVideos("cloud-admin");
+        assertEquals(0, store.pendingCount("cloud-admin"));
     }
 }

@@ -1,5 +1,7 @@
 # BÁO CÁO TỔNG QUAN DỰ ÁN STREAMWIRE
 
+> Báo cáo dưới đây mô tả phiên bản SQLite trước khi tích hợp Firebase. Phiên bản hiện tại đã bổ sung Auth, Firestore, hàng đợi đồng bộ schema 4 và trạng thái offline/online; xem [FIREBASE_SETUP.md](FIREBASE_SETUP.md) để biết cấu hình và giới hạn hiện tại.
+
 Ngày lập: 16/11/2026. Báo cáo dựa trên mã nguồn hiện tại trong thư mục `streamhub`, sau đợt chuyển các luồng dữ liệu sang SQLite.
 
 ## 1. Giới thiệu

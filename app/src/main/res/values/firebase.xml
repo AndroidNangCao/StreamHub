@@ -1,0 +1,6 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="firebase_api_key" translatable="false">AIzaSyDG7uJEgBdLIch3lWIXhiOyHonVrNPGU7I</string>
+  <string name="firebase_app_id" translatable="false">1:763402849861:android:f02010e8c58e503f58dd2c</string>
+  <string name="firebase_project_id" translatable="false">streamingvideo-9fbd3</string>
+</resources>

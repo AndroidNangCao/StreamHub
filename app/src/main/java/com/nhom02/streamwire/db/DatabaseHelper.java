@@ -9,7 +9,7 @@ import android.database.sqlite.SQLiteOpenHelper;
 public class DatabaseHelper extends SQLiteOpenHelper {
 
     private static final String DATABASE_NAME = "streamwire.db";
-    private static final int DATABASE_VERSION = 3;
+    private static final int DATABASE_VERSION = 4;
 
     // Table: Users
     public static final String TABLE_USERS = "users";
@@ -161,6 +161,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
 
         db.execSQL("ALTER TABLE watch_history ADD COLUMN user_id TEXT NOT NULL DEFAULT 'guest'");
         createLocalTables(db);
+        com.nhom02.streamwire.cloud.SyncSchema.create(db);
     }
 
     private void createLocalTables(SQLiteDatabase db) {
@@ -180,5 +181,6 @@ public class DatabaseHelper extends SQLiteOpenHelper {
             db.execSQL("ALTER TABLE watch_history ADD COLUMN user_id TEXT NOT NULL DEFAULT 'legacy'");
             createLocalTables(db);
         }
+        if (oldVersion < 4 && newVersion >= 4) com.nhom02.streamwire.cloud.SyncSchema.create(db);
     }
 }

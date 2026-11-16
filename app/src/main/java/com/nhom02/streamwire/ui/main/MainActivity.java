@@ -21,6 +21,32 @@ public class MainActivity extends AppCompatActivity implements SensorHelper.OnLi
     private SessionManager sessionManager;
     private SensorHelper sensorHelper;
 
+    private boolean receiverRegistered;
+    private final android.content.BroadcastReceiver syncReceiver = new android.content.BroadcastReceiver() {
+        @Override public void onReceive(android.content.Context context, android.content.Intent intent) {
+            if (!sessionManager.isGuest() && sessionManager.getUser() == null) {
+                sessionManager.clearSession();
+                startActivity(new android.content.Intent(MainActivity.this, com.nhom02.streamwire.ui.auth.LoginActivity.class)); finish(); return;
+            }
+            boolean admin = sessionManager.isAdmin();
+            binding.bottomNavigation.getMenu().findItem(R.id.nav_admin).setVisible(admin);
+            if (!admin && getSupportFragmentManager().findFragmentById(R.id.fragment_container) instanceof AdminFragment)
+                binding.bottomNavigation.setSelectedItemId(R.id.nav_home);
+        }
+    };
+
+    @Override protected void onStart() {
+        super.onStart();
+        androidx.core.content.ContextCompat.registerReceiver(this, syncReceiver,
+                new android.content.IntentFilter(com.nhom02.streamwire.cloud.FirebaseSyncWorker.ACTION), androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED);
+        receiverRegistered = true;
+        com.nhom02.streamwire.cloud.SyncScheduler.periodic(this);
+    }
+    @Override protected void onStop() {
+        if (receiverRegistered) { unregisterReceiver(syncReceiver); receiverRegistered = false; }
+        super.onStop();
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);

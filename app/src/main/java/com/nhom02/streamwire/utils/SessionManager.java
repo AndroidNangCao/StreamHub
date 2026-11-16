@@ -23,10 +23,12 @@ public class SessionManager {
     private static final String KEY_DEFAULT_QUALITY = "default_quality";
 
     private final com.nhom02.streamwire.db.DatabaseManager db;
+    private final Context context;
     private final SharedPreferences prefs;
     private final SharedPreferences.Editor editor;
 
     public SessionManager(Context context) {
+        this.context = context.getApplicationContext();
         this.db = com.nhom02.streamwire.db.DatabaseManager.getInstance(context);
         this.prefs = context.getApplicationContext().getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE);
         this.editor = prefs.edit();
@@ -49,6 +51,7 @@ public class SessionManager {
         editor.putString(KEY_USER_ROLE, user.getRole());
         editor.putBoolean(KEY_IS_GUEST, false);
         editor.apply();
+        new com.nhom02.streamwire.cloud.SyncStore(context).setOwner(user.getId());
     }
 
     public User getUser() {
@@ -69,6 +72,8 @@ public class SessionManager {
     public void setGuestMode(boolean isGuest) {
         editor.putBoolean(KEY_IS_GUEST, isGuest);
         if (isGuest) {
+            signOutCloud();
+            new com.nhom02.streamwire.cloud.SyncStore(context).setOwner("guest");
             editor.remove(KEY_TOKEN);
             editor.remove(KEY_USER_ID);
             editor.remove(KEY_USER_EMAIL);
@@ -84,6 +89,10 @@ public class SessionManager {
     }
 
     public boolean isLoggedIn() {
+        if (com.nhom02.streamwire.cloud.FirebaseRuntime.configured(context)) {
+            com.google.firebase.auth.FirebaseUser user = com.nhom02.streamwire.cloud.FirebaseRuntime.auth().getCurrentUser();
+            return user != null && user.getUid().equals(prefs.getString(KEY_USER_ID, ""));
+        }
         return prefs.getString(KEY_TOKEN, null) != null;
     }
 
@@ -135,7 +144,16 @@ public class SessionManager {
         db.setSetting(settingOwner(), KEY_DEFAULT_QUALITY, quality);
     }
 
+    private void signOutCloud() {
+        if (com.nhom02.streamwire.cloud.FirebaseRuntime.configured(context)) {
+            com.nhom02.streamwire.cloud.SyncScheduler.cancel(context);
+            com.nhom02.streamwire.cloud.FirebaseRuntime.auth().signOut();
+        }
+    }
+
     public void clearSession() {
+        signOutCloud();
+        new com.nhom02.streamwire.cloud.SyncStore(context).setOwner("guest");
         editor.remove(KEY_TOKEN);
         editor.remove(KEY_USER_ID);
         editor.remove(KEY_USER_EMAIL);

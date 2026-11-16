@@ -135,7 +135,9 @@ public class AdminFragment extends Fragment {
                         .setItems(roles, (dialog, which) -> {
                             String newRole = roles[which];
                             // Cập nhật SQLite
-                            dbManager.updateUserRole(user.getId(), newRole);
+                            if (!dbManager.updateUserRole(user.getId(), newRole)) {
+                                Toast.makeText(requireContext(), "Không thể đổi quyền của tài khoản này", Toast.LENGTH_SHORT).show(); return;
+                            }
                             user.setRole(newRole);
                             userAdapter.notifyItemChanged(position);
                             Toast.makeText(requireContext(), "Đã cập nhật SQLite: Vai trò " + newRole, Toast.LENGTH_SHORT).show();
@@ -147,7 +149,9 @@ public class AdminFragment extends Fragment {
             public void onToggleLock(User user, int position) {
                 boolean newLockState = !user.isLocked();
                 // Cập nhật SQLite
-                dbManager.toggleUserLock(user.getId(), newLockState);
+                if (!dbManager.toggleUserLock(user.getId(), newLockState)) {
+                    Toast.makeText(requireContext(), "Không thể khóa/mở khóa tài khoản này", Toast.LENGTH_SHORT).show(); return;
+                }
                 user.setLocked(newLockState);
                 userAdapter.notifyItemChanged(position);
 
@@ -309,7 +313,7 @@ public class AdminFragment extends Fragment {
                     String duration = etDuration.getText().toString().trim();
 
                     if (!TextUtils.isEmpty(title)) {
-                        if (!(url.startsWith("https://") || url.startsWith("http://"))) {
+                        if (!(url.startsWith("https://") || (!com.nhom02.streamwire.cloud.FirebaseRuntime.configured(requireContext()) && url.startsWith("http://")))) {
                             Toast.makeText(requireContext(), "Nhập đường dẫn video HTTP/HTTPS", Toast.LENGTH_SHORT).show(); return;
                         }
 
@@ -362,7 +366,7 @@ public class AdminFragment extends Fragment {
             String title = fields[0].getText().toString().trim();
             String url = fields[3].getText().toString().trim();
             if (title.isEmpty()) { fields[0].setError("Nhập tên video"); return; }
-            if (!(url.startsWith("https://") || url.startsWith("http://"))) { fields[3].setError("Nhập URL HTTP/HTTPS"); return; }
+            if (!(url.startsWith("https://") || (!com.nhom02.streamwire.cloud.FirebaseRuntime.configured(requireContext()) && url.startsWith("http://")))) { fields[3].setError("Nhập URL HTTP/HTTPS"); return; }
             video.setTitle(title); video.setCategory(fields[1].getText().toString().trim());
             video.setDescription(fields[2].getText().toString().trim()); video.setVideoUrl(url);
             video.setThumbnailUrl(fields[4].getText().toString().trim()); video.setDuration(fields[5].getText().toString().trim());

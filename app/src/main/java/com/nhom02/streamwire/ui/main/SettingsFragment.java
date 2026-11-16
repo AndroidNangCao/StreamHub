@@ -110,6 +110,9 @@ public class SettingsFragment extends Fragment {
             return;
         }
 
+        if (com.nhom02.streamwire.cloud.FirebaseRuntime.configured(requireContext())) {
+            showCloudPasswordDialog(); return;
+        }
         EditText input = new EditText(requireContext());
         input.setHint("Nhập mật khẩu mới");
         input.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
@@ -133,6 +136,30 @@ public class SettingsFragment extends Fragment {
                     }
                 })
                 .show();
+    }
+
+    private void showCloudPasswordDialog() {
+        android.widget.LinearLayout layout = new android.widget.LinearLayout(requireContext()); layout.setOrientation(android.widget.LinearLayout.VERTICAL); layout.setPadding(32, 16, 32, 16);
+        EditText oldPassword = new EditText(requireContext()); oldPassword.setHint("Mật khẩu hiện tại");
+        EditText newPassword = new EditText(requireContext()); newPassword.setHint("Mật khẩu mới (tối thiểu 6 ký tự)");
+        oldPassword.setInputType(129); newPassword.setInputType(129); layout.addView(oldPassword); layout.addView(newPassword);
+        androidx.appcompat.app.AlertDialog dialog = new MaterialAlertDialogBuilder(requireContext()).setTitle("Đổi mật khẩu Firebase")
+                .setView(layout).setNegativeButton("Hủy", null).setPositiveButton("Lưu", null).create();
+        dialog.setOnShowListener(ignored -> dialog.getButton(-1).setOnClickListener(v -> {
+            String next = newPassword.getText().toString();
+            if (next.length() < 6) { newPassword.setError("Tối thiểu 6 ký tự"); return; }
+            com.google.firebase.auth.FirebaseUser user = com.nhom02.streamwire.cloud.FirebaseRuntime.auth().getCurrentUser();
+            if (user == null || user.getEmail() == null) return;
+            dialog.getButton(-1).setEnabled(false);
+            user.reauthenticate(com.google.firebase.auth.EmailAuthProvider.getCredential(user.getEmail(), oldPassword.getText().toString()))
+                    .continueWithTask(task -> { if (!task.isSuccessful()) throw task.getException(); return user.updatePassword(next); })
+                    .addOnCompleteListener(task -> {
+                        if (!isAdded()) return;
+                        dialog.getButton(-1).setEnabled(true);
+                        Toast.makeText(requireContext(), task.isSuccessful() ? "Đã đổi mật khẩu" : "Không đổi được mật khẩu. Kiểm tra mật khẩu hiện tại và kết nối mạng.", Toast.LENGTH_LONG).show();
+                        if (task.isSuccessful()) dialog.dismiss();
+                    });
+        })); dialog.show();
     }
 
     private void showQualityPickerDialog() {

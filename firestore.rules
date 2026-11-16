@@ -1,0 +1,66 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function active() {
+      return signedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.is_locked == 0;
+    }
+    function admin() {
+      return active() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'ADMIN';
+    }
+    function own(uid) { return active() && request.auth.uid == uid; }
+    function synced() { return request.resource.data._server_updated_at == request.time; }
+    function deleted() { return request.resource.data._deleted == true; }
+
+    match /users/{uid} {
+      allow get: if signedIn() && (request.auth.uid == uid || admin());
+      allow list: if admin();
+      allow create: if signedIn() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['id','email','username','full_name','role','is_locked','avatar_url'])
+        && request.resource.data.id == uid
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.role == 'USER' && request.resource.data.is_locked == 0;
+      // Administrators cannot change their own role/lock; bootstrap the first ADMIN in Console.
+      allow update: if admin() && request.auth.uid != uid && synced()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role','is_locked','_server_updated_at'])
+        && request.resource.data.role in ['USER','STANDARD','CREATOR','ADMIN']
+        && request.resource.data.is_locked in [0,1];
+      allow delete: if false;
+
+      match /{kind}/{recordId} {
+        allow read: if own(uid) && kind in ['history','favorites','settings'];
+        allow create, update: if own(uid) && synced() && request.resource.data.user_id == uid
+          && request.resource.data._deleted is bool && (
+            (kind == 'history'
+              && request.resource.data.keys().hasOnly(['id','user_id','video_id','episode_title','last_position_ms','total_duration_ms','updated_at','_deleted','_server_updated_at'])
+              && (deleted() || (request.resource.data.id == recordId
+                && request.resource.data.video_id is string
+                && request.resource.data.last_position_ms is number && request.resource.data.last_position_ms >= 0
+                && request.resource.data.total_duration_ms is number && request.resource.data.total_duration_ms > 0
+                && request.resource.data.last_position_ms <= request.resource.data.total_duration_ms)))
+            || (kind == 'favorites'
+              && request.resource.data.keys().hasOnly(['user_id','video_id','_deleted','_server_updated_at'])
+              && (deleted() || request.resource.data.video_id == recordId))
+            || (kind == 'settings'
+              && request.resource.data.keys().hasOnly(['user_id','name','value','_deleted','_server_updated_at'])
+              && (deleted() || (request.resource.data.name == recordId && request.resource.data.value is string && request.resource.data.value.size() <= 256)))
+          );
+        // Tombstones keep deletions visible to devices that were offline.
+        allow delete: if false;
+      }
+    }
+
+    match /videos/{videoId} {
+      allow read: if admin() || (resource.data.status == 'ACTIVE' && resource.data._deleted == false);
+      allow create, update: if admin() && synced() && request.resource.data.id == videoId
+        && request.resource.data._deleted is bool
+        && request.resource.data.keys().hasOnly(['id','title','description','video_url','thumbnail_url','duration','duration_ms','views','rating','release_year','age_rating','quality','category','status','published_at','episodes','cast','_deleted','_server_updated_at'])
+        && (deleted() || (request.resource.data.title is string && request.resource.data.title.size() > 0
+          && request.resource.data.title.size() <= 300
+          && request.resource.data.video_url is string && request.resource.data.video_url.matches('https://.+')
+          && request.resource.data.status in ['ACTIVE','PENDING','REPORTED']));
+      allow delete: if false;
+    }
+  }
+}
